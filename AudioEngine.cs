@@ -7,8 +7,11 @@ internal sealed class AudioEngine : IDisposable
 {
     private AudioFileReader? _reader;
     private WaveOutEvent? _output;
+    private EqualizerSampleProvider? _equalizer;
     private SoftLimiterSampleProvider? _provider;
     private bool _ignoreNextStoppedEvent;
+
+    private readonly float[] _eqGains = new float[5];
 
     public event EventHandler<AudioStoppedEventArgs>? PlaybackStopped;
 
@@ -47,7 +50,19 @@ internal sealed class AudioEngine : IDisposable
         DisposePlayback();
 
         _reader = new AudioFileReader(path);
-        _provider = new SoftLimiterSampleProvider(_reader, GetEffectiveGain);
+
+        _equalizer = new EqualizerSampleProvider(
+            _reader,
+            60f,
+            250f,
+            1000f,
+            4000f,
+            10000f
+        );
+
+        _equalizer.SetGains(_eqGains);
+
+        _provider = new SoftLimiterSampleProvider(_equalizer, GetEffectiveGain);
 
         _output = new WaveOutEvent
         {
@@ -59,6 +74,14 @@ internal sealed class AudioEngine : IDisposable
         _output.PlaybackStopped += OutputOnPlaybackStopped;
 
         CurrentFile = path;
+    }
+
+    public void SetEqualizer(params float[] gains)
+    {
+        for (int i = 0; i < _eqGains.Length; i++)
+            _eqGains[i] = i < gains.Length ? Math.Clamp(gains[i], -12f, 12f) : 0f;
+
+        _equalizer?.SetGains(_eqGains);
     }
 
     public void Play()
@@ -144,6 +167,7 @@ internal sealed class AudioEngine : IDisposable
         _reader?.Dispose();
         _reader = null;
 
+        _equalizer = null;
         _provider = null;
         CurrentFile = null;
         _ignoreNextStoppedEvent = false;

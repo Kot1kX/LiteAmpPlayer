@@ -4,6 +4,10 @@
 
 El objetivo del proyecto es ofrecer una herramienta practica, portable y sin distracciones: abrir musica, reproducir, controlar volumen, usar amplificacion moderada, repetir canciones o listas, activar aleatorio y aplicar perfiles basicos de ecualizacion.
 
+
+## Vista general
+
+![LiteAmp Player - interfaz principal](assets/liteamp-main.png)
 ## Caracteristicas
 
 - Reproduccion de archivos de audio locales.

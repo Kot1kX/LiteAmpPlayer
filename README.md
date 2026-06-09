@@ -1,6 +1,6 @@
 # LiteAmp Player
 
-**LiteAmp Player** es un reproductor de audio ligero para Windows, diseñado para reproducir musica local de forma sencilla, rapida y privada.
+**LiteAmp Player** es un reproductor de audio ligero para Windows, disenado para reproducir musica local de forma sencilla, rapida y privada.
 
 El objetivo del proyecto es ofrecer una herramienta practica, portable y sin distracciones: abrir musica, reproducir, controlar volumen, usar amplificacion moderada, repetir canciones o listas, activar aleatorio y aplicar perfiles basicos de ecualizacion.
 
@@ -41,7 +41,7 @@ Los archivos de audio se reproducen localmente en el equipo del usuario. La apli
 
 ## Seguridad y responsabilidad de uso
 
-LiteAmp Player incluye control de volumen y amplificacion. El uso de niveles altos de volumen, especialmente con auriculares, puede causar molestias, fatiga auditiva o daños en la audicion.
+LiteAmp Player incluye control de volumen y amplificacion. El uso de niveles altos de volumen, especialmente con auriculares, puede causar molestias, fatiga auditiva o danos en la audicion.
 
 El usuario es responsable de utilizar el reproductor con un volumen seguro.
 
@@ -52,7 +52,7 @@ Se recomienda:
 - No utilizar volumen maximo durante periodos prolongados.
 - Reducir el volumen si aparece dolor, presion, pitidos o incomodidad.
 
-El desarrollador no se hace responsable de daños auditivos, molestias fisicas, perdida de audicion, daño en altavoces, auriculares u otros dispositivos causados por un uso irresponsable del volumen o del amplificador.
+El desarrollador no se hace responsable de danos auditivos, molestias fisicas, perdida de audicion, dano en altavoces, auriculares u otros dispositivos causados por un uso irresponsable del volumen o del amplificador.
 
 ## Formatos compatibles
 
@@ -79,7 +79,7 @@ No es necesario instalar nada si se usa el paquete portable.
 
 El codigo fuente esta disponible en este repositorio para revision.
 
-Los binarios compilados no se mezclan con el codigo fuente. El ejecutable portable se publica aparte en **Releases**, acompañado de hashes SHA256 cuando corresponde.
+Los binarios compilados no se mezclan con el codigo fuente. El ejecutable portable se publica aparte en **Releases**, acompanado de hashes SHA256 cuando corresponde.
 
 ## Filosofia del proyecto
 

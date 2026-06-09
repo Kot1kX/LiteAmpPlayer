@@ -1,3 +1,6 @@
+using System;
+using System.Windows.Forms;
+
 namespace LiteAmpPlayer;
 
 internal static class Program

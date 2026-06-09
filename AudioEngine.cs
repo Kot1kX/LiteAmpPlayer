@@ -1,20 +1,24 @@
+using System;
 using NAudio.Wave;
 
 namespace LiteAmpPlayer;
 
 internal sealed class AudioEngine : IDisposable
 {
-    private WaveOutEvent? _output;
     private AudioFileReader? _reader;
-    private SoftLimiterSampleProvider? _limiter;
-    private bool _manualStop;
-
-    private int _volumePercent = 80;
-    private float _boostMultiplier = 1.0f;
+    private WaveOutEvent? _output;
+    private SoftLimiterSampleProvider? _provider;
+    private bool _ignoreNextStoppedEvent;
 
     public event EventHandler<AudioStoppedEventArgs>? PlaybackStopped;
 
-    public bool HasFile => _reader != null && _output != null;
+    public string? CurrentFile { get; private set; }
+
+    public float Volume { get; set; } = 0.80f;
+
+    public float Boost { get; set; } = 1.00f;
+
+    public bool HasTrack => _reader is not null;
 
     public bool IsPlaying => _output?.PlaybackState == PlaybackState.Playing;
 
@@ -25,38 +29,36 @@ internal sealed class AudioEngine : IDisposable
         get => _reader?.CurrentTime ?? TimeSpan.Zero;
         set
         {
-            if (_reader == null)
-            {
+            if (_reader is null)
                 return;
-            }
 
-            long ticks = Math.Clamp(value.Ticks, 0, Duration.Ticks);
-            _reader.CurrentTime = new TimeSpan(ticks);
+            if (value < TimeSpan.Zero)
+                value = TimeSpan.Zero;
+
+            if (value > _reader.TotalTime)
+                value = _reader.TotalTime;
+
+            _reader.CurrentTime = value;
         }
     }
 
     public void Load(string path)
     {
-        if (!File.Exists(path))
-        {
-            throw new FileNotFoundException("Archivo no encontrado.", path);
-        }
-
         DisposePlayback();
 
         _reader = new AudioFileReader(path);
-        _limiter = new SoftLimiterSampleProvider(_reader);
+        _provider = new SoftLimiterSampleProvider(_reader, GetEffectiveGain);
 
         _output = new WaveOutEvent
         {
-            DesiredLatency = 120
+            DesiredLatency = 120,
+            NumberOfBuffers = 2
         };
 
-        _output.PlaybackStopped += OnPlaybackStopped;
+        _output.Init(_provider);
+        _output.PlaybackStopped += OutputOnPlaybackStopped;
 
-        UpdateGain();
-
-        _output.Init(_limiter);
+        CurrentFile = path;
     }
 
     public void Play()
@@ -69,74 +71,81 @@ internal sealed class AudioEngine : IDisposable
         _output?.Pause();
     }
 
-    public void Stop()
+    public void Stop(bool resetPosition)
     {
-        if (_output == null)
+        if (_output is null)
         {
+            if (resetPosition)
+                Position = TimeSpan.Zero;
+
             return;
         }
 
-        _manualStop = true;
+        _ignoreNextStoppedEvent = true;
         _output.Stop();
 
-        if (_reader != null)
+        if (resetPosition)
+            Position = TimeSpan.Zero;
+    }
+
+    public void Dispose()
+    {
+        DisposePlayback();
+    }
+
+    private float GetEffectiveGain()
+    {
+        float combined = Volume * Boost;
+
+        if (combined <= 1f)
+            return combined;
+
+        float compressedBoost = 1f + ((combined - 1f) * 0.70f);
+
+        return Math.Min(compressedBoost, 1.70f);
+    }
+
+    private void OutputOnPlaybackStopped(object? sender, StoppedEventArgs e)
+    {
+        if (_ignoreNextStoppedEvent)
         {
-            _reader.CurrentTime = TimeSpan.Zero;
-        }
-    }
-
-    public void SetVolume(int percent)
-    {
-        _volumePercent = Math.Clamp(percent, 0, 100);
-        UpdateGain();
-    }
-
-    public void SetBoost(float multiplier)
-    {
-        _boostMultiplier = Math.Clamp(multiplier, 1.0f, 2.0f);
-        UpdateGain();
-    }
-
-    private void UpdateGain()
-    {
-        if (_limiter == null)
-        {
+            _ignoreNextStoppedEvent = false;
             return;
         }
 
-        float volume = _volumePercent / 100.0f;
-        _limiter.Gain = Math.Clamp(volume * _boostMultiplier, 0.0f, 2.0f);
-    }
+        bool endOfTrack = false;
 
-    private void OnPlaybackStopped(object? sender, StoppedEventArgs e)
-    {
-        bool wasManual = _manualStop;
-        _manualStop = false;
+        if (_reader is not null && _reader.TotalTime > TimeSpan.Zero)
+        {
+            endOfTrack = _reader.CurrentTime >= _reader.TotalTime - TimeSpan.FromMilliseconds(450);
+        }
 
-        PlaybackStopped?.Invoke(
-            this,
-            new AudioStoppedEventArgs(wasManual, e.Exception)
-        );
+        PlaybackStopped?.Invoke(this, new AudioStoppedEventArgs(endOfTrack, e.Exception));
     }
 
     private void DisposePlayback()
     {
-        if (_output != null)
+        if (_output is not null)
         {
-            _output.PlaybackStopped -= OnPlaybackStopped;
-            _output.Stop();
+            _output.PlaybackStopped -= OutputOnPlaybackStopped;
+
+            try
+            {
+                _output.Stop();
+            }
+            catch
+            {
+            }
+
             _output.Dispose();
             _output = null;
         }
 
         _reader?.Dispose();
         _reader = null;
-        _limiter = null;
-        _manualStop = false;
-    }
 
-    public void Dispose()
-    {
-        DisposePlayback();
+        _provider = null;
+        CurrentFile = null;
+        _ignoreNextStoppedEvent = false;
     }
 }

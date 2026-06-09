@@ -1,13 +1,16 @@
+using System;
+
 namespace LiteAmpPlayer;
 
 internal sealed class AudioStoppedEventArgs : EventArgs
 {
-    public AudioStoppedEventArgs(bool manualStop, Exception? exception)
+    public AudioStoppedEventArgs(bool endOfTrack, Exception? exception)
     {
-        ManualStop = manualStop;
+        EndOfTrack = endOfTrack;
         Exception = exception;
     }
 
-    public bool ManualStop { get; }
+    public bool EndOfTrack { get; }
+
     public Exception? Exception { get; }
 }

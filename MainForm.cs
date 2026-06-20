@@ -232,9 +232,9 @@ BuildUi();
         _stopButton = CreateButton("Detener", 212, 178, 84, 34);
         _nextButton = CreateButton("Siguiente", 302, 178, 94, 34);
 
-        _repeatOneButton = CreateButton("Repetir canci\u00F3n", 416, 178, 126, 34);
-        _repeatListButton = CreateButton("Repetir lista", 548, 178, 112, 34);
-        _shuffleButton = CreateButton("Aleatorio", 672, 178, 78, 34);
+        _repeatOneButton = CreateButton("Repetir canci\u00F3n", 430, 178, 100, 34);
+        _repeatListButton = CreateButton("Repetir lista", 540, 178, 100, 34);
+        _shuffleButton = CreateButton("Aleatorio", 650, 178, 100, 34);
 
         var volumeLabel = new Label
         {
@@ -288,31 +288,31 @@ BuildUi();
         RefreshBoostButtonsVisualState();
 
 
-        _openButton = CreateButton("A\u00F1adir archivo", 16, 266, 130, 34);
-        _folderButton = CreateButton("A\u00F1adir carpeta", 152, 266, 130, 34);
-        _clearButton = CreateButton("Limpiar lista", 288, 266, 120, 34);
+        _openButton = CreateActionButton("A\u00F1adir archivo", 16, 260, 121, 34);
+        _folderButton = CreateActionButton("A\u00F1adir carpeta", 145, 260, 121, 34);
+        _clearButton = CreateActionButton("Limpiar lista", 274, 260, 122, 34);
 
         var eqLabel = new Label
         {
             Text = "EQ",
-            Location = new Point(418, 273),
+            Location = new Point(418, 267),
             AutoSize = true,
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = _textDark
         };
 
-        _eqNormalButton = CreateButton("Normal", 452, 266, 58, 34);
-        _eqBassButton = CreateButton("Bass", 512, 266, 58, 34);
-        _eqVocalButton = CreateButton("Vocal", 572, 266, 58, 34);
-        _eqRockButton = CreateButton("Rock", 632, 266, 58, 34);
-        _eqPopButton = CreateButton("Pop", 692, 266, 58, 34);
+        _eqNormalButton = CreateButton("Normal", 452, 260, 58, 30);
+        _eqBassButton = CreateButton("Bass", 512, 260, 58, 30);
+        _eqVocalButton = CreateButton("Vocal", 572, 260, 58, 30);
+        _eqRockButton = CreateButton("Rock", 632, 260, 58, 30);
+        _eqPopButton = CreateButton("Pop", 692, 260, 58, 30);
 
         RefreshEqButtonsVisualState();
 
         _playlistBox = new ListBox
         {
-            Location = new Point(16, 312),
-            Size = new Size(734, 174),
+            Location = new Point(16, 304),
+            Size = new Size(734, 182),
             IntegralHeight = true,
             BorderStyle = BorderStyle.FixedSingle,
             BackColor = _panel,
@@ -512,6 +512,136 @@ _topMostCheck.CheckedChanged += (_, _) =>
         int b = (int)Math.Round(from.B + ((to.B - from.B) * amount));
 
         return Color.FromArgb(r, g, b);
+    }
+    private sealed class LiteAmpDrawButton : Button
+    {
+        private bool _hover;
+
+        public LiteAmpDrawButton()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            FlatStyle = FlatStyle.Flat;
+            FlatAppearance.BorderSize = 0;
+            UseVisualStyleBackColor = false;
+            BackColor = Color.FromArgb(248, 250, 252);
+            ForeColor = Color.FromArgb(20, 28, 38);
+            TextAlign = ContentAlignment.MiddleCenter;
+            TabStop = false;
+        }
+
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            _hover = true;
+            Invalidate();
+            base.OnMouseEnter(e);
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            _hover = false;
+            Invalidate();
+            base.OnMouseLeave(e);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var rect = ClientRectangle;
+            var bg = _hover ? Color.FromArgb(241, 246, 252) : BackColor;
+
+            using (var brush = new SolidBrush(bg))
+                e.Graphics.FillRectangle(brush, rect);
+
+            using (var pen = new Pen(Color.FromArgb(198, 207, 217)))
+                e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+
+            TextRenderer.DrawText(
+                e.Graphics,
+                Text,
+                Font,
+                rect,
+                ForeColor,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
+        }
+    }
+
+    private Button CreateDrawButton(string text, int x, int y, int width, int height)
+    {
+        var button = new LiteAmpDrawButton
+        {
+            Text = text,
+            Location = new Point(x, y),
+            Size = new Size(width, height)
+        };
+
+        Controls.Add(button);
+        return button;
+    }
+    private sealed class LiteAmpActionButton : Button
+    {
+        private bool _hover;
+
+        public LiteAmpActionButton()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+            FlatStyle = FlatStyle.Flat;
+            FlatAppearance.BorderSize = 0;
+            UseVisualStyleBackColor = false;
+            BackColor = Color.FromArgb(248, 249, 251);
+            ForeColor = Color.FromArgb(20, 28, 38);
+            TextAlign = ContentAlignment.MiddleCenter;
+            TabStop = false;
+        }
+
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            _hover = true;
+            Invalidate();
+            base.OnMouseEnter(e);
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            _hover = false;
+            Invalidate();
+            base.OnMouseLeave(e);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            e.Graphics.Clear(Parent?.BackColor ?? Color.FromArgb(248, 249, 251));
+
+            var innerHeight = Math.Min(28, Height - 2);
+            var innerY = Math.Max(0, (Height - innerHeight) / 2);
+            var rect = new Rectangle(0, innerY, Width - 1, innerHeight - 1);
+            var bg = _hover ? Color.FromArgb(242, 247, 252) : Color.FromArgb(248, 249, 251);
+
+            using (var brush = new SolidBrush(bg))
+                e.Graphics.FillRectangle(brush, rect);
+
+            using (var pen = new Pen(Color.FromArgb(198, 207, 217)))
+                e.Graphics.DrawRectangle(pen, rect);
+
+            TextRenderer.DrawText(
+                e.Graphics,
+                Text,
+                Font,
+                rect,
+                ForeColor,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
+        }
+    }
+
+    private Button CreateActionButton(string text, int x, int y, int width, int height)
+    {
+        var button = new LiteAmpActionButton
+        {
+            Text = text,
+            Location = new Point(x, y),
+            Size = new Size(width, height)
+        };
+
+        Controls.Add(button);
+        return button;
     }
 
     private Button CreateButton(string text, int x, int y, int width, int height)

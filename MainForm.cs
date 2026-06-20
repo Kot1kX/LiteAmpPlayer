@@ -234,7 +234,7 @@ BuildUi();
 
         _repeatOneButton = CreateButton("Repetir canci\u00F3n", 416, 178, 126, 34);
         _repeatListButton = CreateButton("Repetir lista", 548, 178, 112, 34);
-        _shuffleButton = CreateButton("Aleatorio", 666, 178, 78, 34);
+        _shuffleButton = CreateButton("Aleatorio", 672, 178, 78, 34);
 
         var volumeLabel = new Label
         {
@@ -312,7 +312,7 @@ BuildUi();
         _playlistBox = new ListBox
         {
             Location = new Point(16, 312),
-            Size = new Size(728, 166),
+            Size = new Size(734, 174),
             IntegralHeight = true,
             BorderStyle = BorderStyle.FixedSingle,
             BackColor = _panel,

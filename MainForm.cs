@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Windows.Forms;
 
 namespace LiteAmpPlayer;
@@ -48,7 +49,6 @@ internal sealed class MainForm : Form
     private Label _statusLabel = null!;
     private Label _creditLabel = null!;
     private Label _volumeValueLabel = null!;
-    private Label _boostValueLabel = null!;
 
     private DirectSeekTrackBar _progressBar = null!;
     private TrackBar _volumeBar = null!;
@@ -64,17 +64,29 @@ internal sealed class MainForm : Form
     private Button _repeatListButton = null!;
     private Button _shuffleButton = null!;
 
-    private ComboBox _boostBox = null!;
-    private ComboBox _eqBox = null!;
+    private Button _boost100Button = null!;
+    private Button _boost125Button = null!;
+    private Button _boost150Button = null!;
+    private Button _boost175Button = null!;
+    private Button _boost200Button = null!;
+    private int _selectedBoostPercent = 100;
+    private Button _eqNormalButton = null!;
+    private Button _eqBassButton = null!;
+    private Button _eqVocalButton = null!;
+    private Button _eqRockButton = null!;
+    private Button _eqPopButton = null!;
+    private string _selectedEqPreset = "Normal";
     private ListBox _playlistBox = null!;
     private CheckBox _topMostCheck = null!;
 
     public MainForm()
     {
-        BuildUi();
-        WireEvents();
-        TryLoadIcon();
 
+        
+        TryLoadIcon();
+ApplyAudioStabilityTuning();
+BuildUi();
+        WireEvents();
         _timer.Interval = 250;
         _timer.Tick += (_, _) => UpdateProgress();
         _timer.Start();
@@ -86,7 +98,24 @@ internal sealed class MainForm : Form
 
         StartCreditFade();
         RefreshPlaybackVisualState();
-    }
+    
+        Shown += (_, _) => BeginInvoke(new Action(AttachPlaylistSearchOnce));
+
+        Shown += (_, _) => BeginInvoke(new Action(AttachPlaylistSearchOnce));
+        Resize += (_, _) => PositionPlaylistSearchControls();
+
+        Shown += (_, _) => BeginInvoke(new Action(AttachKeyboardShortcutsOnce));
+
+        Shown += (_, _) => BeginInvoke(new Action(AttachTimelineKeyboardGuardOnce));
+
+        Shown += (_, _) => BeginInvoke(new Action(AttachStartupFocusFixOnce));
+
+        Shown += (_, _) => BeginInvoke(new Action(AttachPlaylistNativeNavigationOnce));
+
+        Shown += (_, _) => BeginInvoke(new Action(LiteAmpInstallPlaylistDeselectFilterOnce));
+
+        Shown += (_, _) => BeginInvoke(new Action(AttachLiteAmpArrowMessageFilterOnce));
+}
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
@@ -112,11 +141,16 @@ internal sealed class MainForm : Form
         BackColor = _background;
         AllowDrop = true;
 
-        var headerStrip = new Panel
+        var headerIcon = TryLoadHeaderBitmap();
+
+        var headerIconBox = new PictureBox
         {
-            BackColor = _accent,
-            Location = new Point(16, 14),
-            Size = new Size(5, 44)
+            Image = headerIcon,
+            Location = new Point(16, 17),
+            Size = new Size(30, 30),
+            SizeMode = PictureBoxSizeMode.Zoom,
+            BackColor = _background,
+            Visible = headerIcon is not null
         };
 
         var brandLiteLabel = new Label
@@ -126,7 +160,7 @@ internal sealed class MainForm : Form
             ForeColor = _gold,
             BackColor = _background,
             Font = new Font("Segoe UI Semibold", 16F, FontStyle.Bold),
-            Location = new Point(28, 10)
+            Location = new Point(54, 10)
         };
 
         var brandPlayerLabel = new Label
@@ -136,14 +170,14 @@ internal sealed class MainForm : Form
             ForeColor = _accent,
             BackColor = _background,
             Font = new Font("Segoe UI Semibold", 16F, FontStyle.Bold),
-            Location = new Point(118, 10)
+            Location = new Point(144, 10)
         };
 
         _creditLabel = new Label
         {
             Text = "Creado por Kot1kX",
             AutoEllipsis = true,
-            Location = new Point(30, 39),
+            Location = new Point(56, 39),
             Size = new Size(260, 18),
             ForeColor = _background,
             BackColor = _background,
@@ -232,39 +266,27 @@ internal sealed class MainForm : Form
 
         var boostLabel = new Label
         {
-            Text = "Amplificador",
-            Location = new Point(440, 225),
-            Size = new Size(90, 24),
+            Text = "AMP",
+            Location = new Point(418, 225),
+            AutoSize = true,
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = _textDark
         };
 
-        _boostBox = new ComboBox
-        {
-            Location = new Point(535, 222),
-            Size = new Size(90, 28),
-            DropDownStyle = ComboBoxStyle.DropDownList
-        };
+        _boost100Button = CreateButton("100%", 452, 219, 58, 30);
+        _boost125Button = CreateButton("125%", 512, 219, 58, 30);
+        _boost150Button = CreateButton("150%", 572, 219, 58, 30);
+        _boost175Button = CreateButton("175%", 632, 219, 58, 30);
+        _boost200Button = CreateButton("200%", 692, 219, 58, 30);
 
-        _boostBox.Items.AddRange(new object[]
-        {
-            "100%",
-            "125%",
-            "150%",
-            "175%",
-            "200%"
-        });
+        _boost100Button.TabStop = false;
+        _boost125Button.TabStop = false;
+        _boost150Button.TabStop = false;
+        _boost175Button.TabStop = false;
+        _boost200Button.TabStop = false;
 
-        _boostBox.SelectedIndex = 0;
+        RefreshBoostButtonsVisualState();
 
-        _boostValueLabel = new Label
-        {
-            Text = "100%",
-            Location = new Point(632, 225),
-            Size = new Size(70, 24),
-            TextAlign = ContentAlignment.MiddleLeft,
-            ForeColor = _textMuted
-        };
 
         _openButton = CreateButton("A\u00F1adir archivo", 16, 266, 130, 34);
         _folderButton = CreateButton("A\u00F1adir carpeta", 152, 266, 130, 34);
@@ -273,36 +295,25 @@ internal sealed class MainForm : Form
         var eqLabel = new Label
         {
             Text = "EQ",
-            Location = new Point(440, 273),
-            Size = new Size(30, 24),
+            Location = new Point(418, 273),
+            AutoSize = true,
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = _textDark
         };
 
-        _eqBox = new ComboBox
-        {
-            Location = new Point(475, 270),
-            Size = new Size(150, 28),
-            DropDownStyle = ComboBoxStyle.DropDownList
-        };
+        _eqNormalButton = CreateButton("Normal", 452, 266, 58, 34);
+        _eqBassButton = CreateButton("Bass", 512, 266, 58, 34);
+        _eqVocalButton = CreateButton("Vocal", 572, 266, 58, 34);
+        _eqRockButton = CreateButton("Rock", 632, 266, 58, 34);
+        _eqPopButton = CreateButton("Pop", 692, 266, 58, 34);
 
-        _eqBox.Items.AddRange(new object[]
-        {
-            "Plano",
-            "Bass Boost",
-            "Vocal",
-            "Rock",
-            "Pop",
-            "Night"
-        });
-
-        _eqBox.SelectedIndex = 0;
+        RefreshEqButtonsVisualState();
 
         _playlistBox = new ListBox
         {
             Location = new Point(16, 312),
             Size = new Size(728, 166),
-            IntegralHeight = false,
+            IntegralHeight = true,
             BorderStyle = BorderStyle.FixedSingle,
             BackColor = _panel,
             ForeColor = _textDark,
@@ -321,7 +332,7 @@ internal sealed class MainForm : Form
 
         Controls.AddRange(
         [
-            headerStrip,
+            headerIconBox,
             brandLiteLabel,
             brandPlayerLabel,
             _creditLabel,
@@ -340,13 +351,20 @@ internal sealed class MainForm : Form
             _volumeBar,
             _volumeValueLabel,
             boostLabel,
-            _boostBox,
-            _boostValueLabel,
+            _boost100Button,
+            _boost125Button,
+            _boost150Button,
+            _boost175Button,
+            _boost200Button,
             _openButton,
             _folderButton,
             _clearButton,
             eqLabel,
-            _eqBox,
+            _eqNormalButton,
+            _eqBassButton,
+            _eqVocalButton,
+            _eqRockButton,
+            _eqPopButton,
             _playlistBox,
             _statusLabel
         ]);
@@ -406,20 +424,18 @@ internal sealed class MainForm : Form
             _audio.Volume = _volumeBar.Value / 100f;
             _volumeValueLabel.Text = $"{_volumeBar.Value}%";
         };
+        _boost100Button.Click += (_, _) => SelectBoostPercent(100);
+        _boost125Button.Click += (_, _) => SelectBoostPercent(125);
+        _boost150Button.Click += (_, _) => SelectBoostPercent(150);
+        _boost175Button.Click += (_, _) => SelectBoostPercent(175);
+        _boost200Button.Click += (_, _) => SelectBoostPercent(200);
 
-        _boostBox.SelectedIndexChanged += (_, _) =>
-        {
-            int boost = GetSelectedBoostPercent();
-            _audio.Boost = boost / 100f;
-            _boostValueLabel.Text = $"{boost}%";
-        };
-
-        _eqBox.SelectedIndexChanged += (_, _) =>
-        {
-            ApplyEqPreset();
-        };
-
-        _topMostCheck.CheckedChanged += (_, _) =>
+        _eqNormalButton.Click += (_, _) => SelectEqPreset("Normal");
+        _eqBassButton.Click += (_, _) => SelectEqPreset("Bass Boost");
+        _eqVocalButton.Click += (_, _) => SelectEqPreset("Vocal");
+        _eqRockButton.Click += (_, _) => SelectEqPreset("Rock");
+        _eqPopButton.Click += (_, _) => SelectEqPreset("Pop");
+_topMostCheck.CheckedChanged += (_, _) =>
         {
             TopMost = _topMostCheck.Checked;
         };
@@ -427,7 +443,20 @@ internal sealed class MainForm : Form
         _progressBar.SeekRequested += seconds =>
         {
             if (!_audio.HasTrack)
+            {
+                _seeking = false;
+
+                try
+                {
+                    if (_progressBar.Value != 0)
+                        _progressBar.Value = 0;
+                }
+                catch
+                {
+                }
+
                 return;
+            }
 
             _seeking = true;
             _audio.Position = TimeSpan.FromSeconds(seconds);
@@ -520,38 +549,6 @@ internal sealed class MainForm : Form
         button.FlatAppearance.MouseOverBackColor = Color.FromArgb(0, 100, 190);
     }
 
-    private void RefreshPlaybackVisualState()
-    {
-        bool hasTrack = _audio.HasTrack;
-        bool isPlaying = _audio.IsPlaying;
-
-        if (isPlaying)
-        {
-            ApplyAccentButtonStyle(_playButton);
-            _titleLabel.BackColor = _playingSurface;
-            _playlistBox.BackColor = _playingListSurface;
-            _statusLabel.ForeColor = _accent;
-            _timeLabel.ForeColor = _accent;
-            return;
-        }
-
-        ApplyDefaultButtonStyle(_playButton);
-
-        if (hasTrack)
-        {
-            _titleLabel.BackColor = _pausedSurface;
-            _playlistBox.BackColor = _panel;
-            _statusLabel.ForeColor = _textMuted;
-            _timeLabel.ForeColor = _textMuted;
-            return;
-        }
-
-        _titleLabel.BackColor = _panel;
-        _playlistBox.BackColor = _panel;
-        _statusLabel.ForeColor = _textMuted;
-        _timeLabel.ForeColor = _textMuted;
-    }
-
     private void AddFilesFromDialog()
     {
         using var dialog = new OpenFileDialog
@@ -581,43 +578,6 @@ internal sealed class MainForm : Form
         AddPaths([dialog.SelectedPath]);
     }
 
-    private void AddPaths(IEnumerable<string> paths)
-    {
-        int added = 0;
-
-        foreach (string path in paths)
-        {
-            if (File.Exists(path))
-            {
-                if (AddTrack(path))
-                    added++;
-
-                continue;
-            }
-
-            if (Directory.Exists(path))
-            {
-                foreach (string file in EnumerateSupportedFiles(path))
-                {
-                    if (AddTrack(file))
-                        added++;
-                }
-            }
-        }
-
-        if (_currentIndex < 0 && _playlist.Count > 0)
-        {
-            _currentIndex = 0;
-            _playlistBox.SelectedIndex = 0;
-            UpdateTitleLabel();
-        }
-
-        if (added > 0)
-            ShowStatus($"A\u00F1adidas {added} pista(s)");
-        else
-            ShowStatus("No se a\u00F1adieron pistas nuevas");
-    }
-
     private bool AddTrack(string path)
     {
         if (!IsSupported(path))
@@ -627,7 +587,7 @@ internal sealed class MainForm : Form
             return false;
 
         _playlist.Add(path);
-        _playlistBox.Items.Add(Path.GetFileName(path));
+        _playlistBox.Items.Add(GetTrackDisplayName(path));
 
         return true;
     }
@@ -774,7 +734,7 @@ internal sealed class MainForm : Form
 
             _audio.Load(_playlist[index]);
             _audio.Volume = _volumeBar.Value / 100f;
-            _audio.Boost = GetSelectedBoostPercent() / 100f;
+            _audio.Boost = _selectedBoostPercent / 100f;
             ApplyEqPreset(updateStatus: false);
 
             UpdateTitleLabel();
@@ -871,10 +831,10 @@ internal sealed class MainForm : Form
             return;
         }
 
-        string fileName = Path.GetFileName(_playlist[_currentIndex]);
+        string displayName = GetTrackDisplayName(_playlist[_currentIndex]);
 
-        _titleLabel.Text = fileName;
-        Text = $"LiteAmp Player - {fileName}";
+        _titleLabel.Text = displayName;
+        Text = $"LiteAmp Player - {displayName}";
     }
 
     private void RefreshModeButtons()
@@ -895,53 +855,24 @@ internal sealed class MainForm : Form
         ApplyDefaultButtonStyle(button);
     }
 
-    private void ApplyEqPreset(bool updateStatus = true)
+        private void SelectBoostPercent(int percent)
     {
-        string preset = _eqBox.SelectedItem as string ?? "Plano";
-        float[] gains = GetEqPresetGains(preset);
-
-        _audio.SetEqualizer(gains);
-        RefreshEqVisualState();
-
-        if (updateStatus)
-            ShowStatus($"EQ: {preset}");
+        _selectedBoostPercent = Math.Clamp(percent, 100, 200);
+        _audio.Boost = _selectedBoostPercent / 100f;
+        RefreshBoostButtonsVisualState();
+        ShowStatus($"Amplificador: {_selectedBoostPercent}%");
     }
 
-    private static float[] GetEqPresetGains(string preset)
+    private void RefreshBoostButtonsVisualState()
     {
-        return preset switch
-        {
-            "Bass Boost" => [5.0f, 3.0f, 0.0f, -1.0f, 0.0f],
-            "Vocal" => [-2.0f, -1.0f, 3.5f, 2.5f, 0.0f],
-            "Rock" => [3.0f, 1.5f, -1.0f, 2.5f, 3.0f],
-            "Pop" => [2.0f, 1.0f, 1.0f, 2.0f, 1.5f],
-            "Night" => [-3.0f, -2.0f, 0.0f, 1.0f, -1.5f],
-            _ => [0.0f, 0.0f, 0.0f, 0.0f, 0.0f]
-        };
-    }
-
-    private void RefreshEqVisualState()
-    {
-        bool active = (_eqBox.SelectedItem as string ?? "Plano") != "Plano";
-
-        if (active)
-        {
-            _eqBox.BackColor = Color.FromArgb(235, 243, 255);
-            _eqBox.ForeColor = _accent;
+        if (_boost100Button is null)
             return;
-        }
 
-        _eqBox.BackColor = Color.White;
-        _eqBox.ForeColor = _textDark;
-    }
-    private int GetSelectedBoostPercent()
-    {
-        if (_boostBox.SelectedItem is not string text)
-            return 100;
-
-        text = text.Replace("%", string.Empty).Trim();
-
-        return int.TryParse(text, out int value) ? value : 100;
+        ApplyModeStyle(_boost100Button, _selectedBoostPercent == 100);
+        ApplyModeStyle(_boost125Button, _selectedBoostPercent == 125);
+        ApplyModeStyle(_boost150Button, _selectedBoostPercent == 150);
+        ApplyModeStyle(_boost175Button, _selectedBoostPercent == 175);
+        ApplyModeStyle(_boost200Button, _selectedBoostPercent == 200);
     }
 
     private void ShowStatus(string text)
@@ -949,7 +880,7 @@ internal sealed class MainForm : Form
         _statusLabel.Text = text;
     }
 
-    private void TryLoadIcon()
+    private Bitmap? TryLoadHeaderBitmap()
     {
         string[] candidates =
         [
@@ -966,14 +897,92 @@ internal sealed class MainForm : Form
 
                 if (File.Exists(path))
                 {
-                    Icon = new Icon(path);
-                    return;
+                    using var icon = new Icon(path, 64, 64);
+                    using Bitmap raw = icon.ToBitmap();
+
+                    return BuildHeaderIconBitmap(raw, 30, 30);
                 }
             }
             catch
             {
             }
         }
+
+        return null;
+    }
+
+    private static Bitmap BuildHeaderIconBitmap(Bitmap source, int targetWidth, int targetHeight)
+    {
+        using var transparent = new Bitmap(source.Width, source.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+        int minX = source.Width;
+        int minY = source.Height;
+        int maxX = -1;
+        int maxY = -1;
+
+        for (int y = 0; y < source.Height; y++)
+        {
+            for (int x = 0; x < source.Width; x++)
+            {
+                Color pixel = source.GetPixel(x, y);
+
+                if (pixel.A == 0 || IsNearWhiteBackground(pixel))
+                {
+                    transparent.SetPixel(x, y, Color.Transparent);
+                    continue;
+                }
+
+                transparent.SetPixel(x, y, pixel);
+
+                minX = Math.Min(minX, x);
+                minY = Math.Min(minY, y);
+                maxX = Math.Max(maxX, x);
+                maxY = Math.Max(maxY, y);
+            }
+        }
+
+        if (maxX < minX || maxY < minY)
+            return new Bitmap(targetWidth, targetHeight, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+        const int padding = 2;
+
+        minX = Math.Max(0, minX - padding);
+        minY = Math.Max(0, minY - padding);
+        maxX = Math.Min(source.Width - 1, maxX + padding);
+        maxY = Math.Min(source.Height - 1, maxY + padding);
+
+        var crop = Rectangle.FromLTRB(minX, minY, maxX + 1, maxY + 1);
+        var result = new Bitmap(targetWidth, targetHeight, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+        using Graphics graphics = Graphics.FromImage(result);
+        graphics.Clear(Color.Transparent);
+        graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+        graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+
+        float scale = Math.Min(targetWidth / (float)crop.Width, targetHeight / (float)crop.Height);
+        int width = Math.Max(1, (int)Math.Round(crop.Width * scale));
+        int height = Math.Max(1, (int)Math.Round(crop.Height * scale));
+        int left = (targetWidth - width) / 2;
+        int top = (targetHeight - height) / 2;
+
+        graphics.DrawImage(transparent, new Rectangle(left, top, width, height), crop, GraphicsUnit.Pixel);
+
+        return result;
+    }
+
+    private static bool IsNearWhiteBackground(Color color)
+    {
+        if (color.A < 20)
+            return true;
+
+        int max = Math.Max(color.R, Math.Max(color.G, color.B));
+        int min = Math.Min(color.R, Math.Min(color.G, color.B));
+
+        bool veryLight = color.R >= 235 && color.G >= 235 && color.B >= 235;
+        bool lowSaturation = (max - min) <= 18;
+
+        return veryLight && lowSaturation;
     }
 
     private static IEnumerable<string> EnumerateSupportedFiles(string folder)
@@ -1032,58 +1041,2375 @@ internal sealed class MainForm : Form
         return time.ToString(@"mm\:ss");
     }
 
+    private static string GetTrackDisplayName(string path)
+    {
+        string fileName = Path.GetFileName(path);
+
+        if (!LooksLikeGeneratedFileName(path))
+            return fileName;
+
+        AudioMetadata metadata = TryReadAudioMetadata(path);
+
+        if (!string.IsNullOrWhiteSpace(metadata.Title) && !string.IsNullOrWhiteSpace(metadata.Artist))
+            return $"{metadata.Artist} - {metadata.Title}";
+
+        if (!string.IsNullOrWhiteSpace(metadata.Title))
+            return metadata.Title;
+
+        return fileName;
+    }
+
+    private static bool LooksLikeGeneratedFileName(string path)
+    {
+        string name = Path.GetFileNameWithoutExtension(path);
+
+        if (name.Length < 16)
+            return false;
+
+        int separators = name.Count(ch => ch is ' ' or '-' or '_' or '.' or '(' or ')' or '[' or ']');
+        int alnum = name.Count(char.IsLetterOrDigit);
+        int lower = name.Count(char.IsLower);
+        int upper = name.Count(char.IsUpper);
+        int digits = name.Count(char.IsDigit);
+
+        bool mostlyCompact = alnum >= name.Length * 0.80 && separators <= 2;
+        bool mixedGenerated = lower >= 8 && (upper + digits) >= 2;
+
+        return mostlyCompact && mixedGenerated;
+    }
+
+    private static AudioMetadata TryReadAudioMetadata(string path)
+    {
+        string extension = Path.GetExtension(path).ToLowerInvariant();
+
+        try
+        {
+            if (extension == ".mp3")
+                return TryReadMp3Id3Metadata(path);
+
+            if (extension is ".m4a" or ".aac")
+                return TryReadMp4Metadata(path);
+        }
+        catch
+        {
+        }
+
+        return default;
+    }
+
+    private static AudioMetadata TryReadMp3Id3Metadata(string path)
+    {
+        using var stream = File.OpenRead(path);
+
+        if (stream.Length < 10)
+            return default;
+
+        byte[] header = new byte[10];
+
+        if (stream.Read(header, 0, header.Length) != header.Length)
+            return default;
+
+        if (header[0] != 'I' || header[1] != 'D' || header[2] != '3')
+            return default;
+
+        int version = header[3];
+        int tagSize = ReadSynchsafeInt(header, 6);
+
+        if (tagSize <= 0)
+            return default;
+
+        tagSize = Math.Min(tagSize, 1024 * 1024);
+
+        byte[] tag = new byte[tagSize];
+        int read = stream.Read(tag, 0, tag.Length);
+
+        string? title = null;
+        string? artist = null;
+
+        int offset = 0;
+
+        while (offset + 10 <= read)
+        {
+            string frameId = Encoding.ASCII.GetString(tag, offset, 4);
+
+            if (string.IsNullOrWhiteSpace(frameId) || frameId.Any(ch => !char.IsUpper(ch) && !char.IsDigit(ch)))
+                break;
+
+            int frameSize = version >= 4
+                ? ReadSynchsafeInt(tag, offset + 4)
+                : ReadBigEndianInt(tag, offset + 4);
+
+            if (frameSize <= 0 || offset + 10 + frameSize > read)
+                break;
+
+            byte[] payload = new byte[frameSize];
+            Array.Copy(tag, offset + 10, payload, 0, frameSize);
+
+            if (frameId == "TIT2")
+                title = DecodeId3Text(payload);
+            else if (frameId == "TPE1")
+                artist = DecodeId3Text(payload);
+
+            if (!string.IsNullOrWhiteSpace(title) && !string.IsNullOrWhiteSpace(artist))
+                break;
+
+            offset += 10 + frameSize;
+        }
+
+        return new AudioMetadata(CleanMetadataText(title), CleanMetadataText(artist));
+    }
+
+    private static AudioMetadata TryReadMp4Metadata(string path)
+    {
+        long length = new FileInfo(path).Length;
+        int bytesToRead = (int)Math.Min(length, 8L * 1024L * 1024L);
+
+        byte[] data = new byte[bytesToRead];
+
+        using (var stream = File.OpenRead(path))
+        {
+            _ = stream.Read(data, 0, data.Length);
+        }
+
+        string? title = FindMp4TextAtom(data, "\u00A9nam");
+        string? artist = FindMp4TextAtom(data, "\u00A9ART") ?? FindMp4TextAtom(data, "aART");
+
+        return new AudioMetadata(CleanMetadataText(title), CleanMetadataText(artist));
+    }
+
+    private static string? FindMp4TextAtom(byte[] data, string atomName)
+    {
+        byte[] atom = Encoding.GetEncoding("ISO-8859-1").GetBytes(atomName);
+
+        for (int i = 0; i + 8 < data.Length; i++)
+        {
+            if (data[i] != atom[0] || data[i + 1] != atom[1] || data[i + 2] != atom[2] || data[i + 3] != atom[3])
+                continue;
+
+            int atomStart = i - 4;
+
+            if (atomStart < 0)
+                continue;
+
+            int atomSize = ReadBigEndianInt(data, atomStart);
+
+            if (atomSize <= 16 || atomStart + atomSize > data.Length)
+                continue;
+
+            int atomEnd = atomStart + atomSize;
+
+            for (int j = i + 4; j + 16 < atomEnd; j++)
+            {
+                if (data[j + 4] == 'd' && data[j + 5] == 'a' && data[j + 6] == 't' && data[j + 7] == 'a')
+                {
+                    int dataSize = ReadBigEndianInt(data, j);
+
+                    if (dataSize <= 16 || j + dataSize > atomEnd)
+                        continue;
+
+                    int textOffset = j + 16;
+                    int textLength = dataSize - 16;
+
+                    if (textLength <= 0)
+                        continue;
+
+                    return Encoding.UTF8.GetString(data, textOffset, textLength);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static string? DecodeId3Text(byte[] payload)
+    {
+        if (payload.Length <= 1)
+            return null;
+
+        byte encoding = payload[0];
+        byte[] textBytes = payload.Skip(1).ToArray();
+
+        return encoding switch
+        {
+            0 => Encoding.GetEncoding("ISO-8859-1").GetString(textBytes),
+            1 => Encoding.Unicode.GetString(textBytes),
+            2 => Encoding.BigEndianUnicode.GetString(textBytes),
+            3 => Encoding.UTF8.GetString(textBytes),
+            _ => Encoding.UTF8.GetString(textBytes)
+        };
+    }
+
+    private static string? CleanMetadataText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        value = value.Replace("\0", string.Empty).Trim();
+
+        while (value.Contains("  ", StringComparison.Ordinal))
+            value = value.Replace("  ", " ", StringComparison.Ordinal);
+
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static int ReadSynchsafeInt(byte[] data, int offset)
+    {
+        if (offset + 4 > data.Length)
+            return 0;
+
+        return (data[offset] << 21)
+            | (data[offset + 1] << 14)
+            | (data[offset + 2] << 7)
+            | data[offset + 3];
+    }
+
+    private static int ReadBigEndianInt(byte[] data, int offset)
+    {
+        if (offset + 4 > data.Length)
+            return 0;
+
+        return (data[offset] << 24)
+            | (data[offset + 1] << 16)
+            | (data[offset + 2] << 8)
+            | data[offset + 3];
+    }
+
+    private readonly record struct AudioMetadata(string? Title, string? Artist);
+
+    
+    
+    
     private sealed class DirectSeekTrackBar : TrackBar
     {
+        private const int WM_LBUTTONDOWN = 0x0201;
+        private const int WM_LBUTTONUP = 0x0202;
+        private const int WM_MOUSEMOVE = 0x0200;
+        private const int WM_MOUSEWHEEL = 0x020A;
+
+        private const int WM_USER = 0x0400;
+        private const int TBM_GETTHUMBRECT = WM_USER + 25;
+        private const int TBM_GETCHANNELRECT = WM_USER + 26;
+
+        private const int ThumbHitPadding = 5;
+        private const int DragStartThresholdPixels = 1;
+        private const int WheelDelta = 120;
+
+        private bool _mouseDown;
+        private bool _draggingThumb;
+        private bool _dragMoved;
+        private int _dragOffsetPixels;
+        private int _mouseDownX;
+
         public event Action<int>? SeekRequested;
 
-        protected override void OnMouseDown(MouseEventArgs e)
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct NativeRect
         {
-            if (e.Button == MouseButtons.Left)
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+
+            public Rectangle ToRectangle()
             {
+                return Rectangle.FromLTRB(Left, Top, Right, Bottom);
+            }
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, ref NativeRect lParam);
+
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            base.OnMouseEnter(e);
+
+            if (CanFocus)
                 Focus();
-                Capture = true;
-                SetValueFromMouse(e.X);
-                SeekRequested?.Invoke(Value);
-                return;
-            }
-
-            base.OnMouseDown(e);
         }
 
-        protected override void OnMouseMove(MouseEventArgs e)
+        protected override void WndProc(ref Message m)
         {
-            if (e.Button == MouseButtons.Left && Capture)
+            if (m.Msg == WM_LBUTTONDOWN)
             {
-                SetValueFromMouse(e.X);
-                SeekRequested?.Invoke(Value);
+                HandleNativeLeftDown(GetPointFromLParam(m.LParam));
                 return;
             }
 
-            base.OnMouseMove(e);
-        }
-
-        protected override void OnMouseUp(MouseEventArgs e)
-        {
-            if (e.Button == MouseButtons.Left)
+            if (m.Msg == WM_MOUSEMOVE && _mouseDown)
             {
-                SetValueFromMouse(e.X);
-                SeekRequested?.Invoke(Value);
-                Capture = false;
+                HandleNativeMouseMove(GetPointFromLParam(m.LParam));
                 return;
             }
 
-            base.OnMouseUp(e);
+            if (m.Msg == WM_LBUTTONUP && _mouseDown)
+            {
+                HandleNativeLeftUp(GetPointFromLParam(m.LParam));
+                return;
+            }
+
+            if (m.Msg == WM_MOUSEWHEEL)
+            {
+                HandleNativeMouseWheel(m.WParam);
+                m.Result = IntPtr.Zero;
+                return;
+            }
+
+            base.WndProc(ref m);
         }
 
-        private void SetValueFromMouse(int mouseX)
+        protected override void OnMouseWheel(MouseEventArgs e)
         {
-            if (Maximum <= Minimum || Width <= 0)
+            HandleMouseWheelDelta(e.Delta);
+        }
+
+    private void HandleNativeLeftDown(Point point)
+        {
+            Focus();
+            Capture = true;
+
+            _mouseDown = true;
+            _dragMoved = false;
+            _mouseDownX = point.X;
+
+            Rectangle thumb = GetThumbRectangle();
+            Rectangle hit = thumb;
+            hit.Inflate(ThumbHitPadding, ThumbHitPadding);
+
+            if (hit.Contains(point))
+            {
+                _draggingThumb = true;
+                _dragOffsetPixels = point.X - GetThumbCenterX();
+                return;
+            }
+
+            _draggingThumb = false;
+            _dragOffsetPixels = 0;
+            SetValueFromTrackX(point.X);
+        }
+
+    private void HandleNativeMouseMove(Point point)
+        {
+            if (!_mouseDown)
                 return;
 
-            double ratio = Math.Clamp(mouseX / (double)Math.Max(1, Width), 0d, 1d);
+            if (_draggingThumb)
+            {
+                int adjustedCenterX = point.X - _dragOffsetPixels;
+
+                if (!_dragMoved && Math.Abs(point.X - _mouseDownX) < DragStartThresholdPixels)
+                    return;
+
+                _dragMoved = true;
+                SetValueFromTrackX(adjustedCenterX);
+                return;
+            }
+
+            SetValueFromTrackX(point.X);
+        }
+
+    private void HandleNativeLeftUp(Point point)
+        {
+            if (_draggingThumb)
+            {
+                if (_dragMoved)
+                    SetValueFromTrackX(point.X - _dragOffsetPixels);
+            }
+            else
+            {
+                SetValueFromTrackX(point.X);
+            }
+
+            _mouseDown = false;
+            _draggingThumb = false;
+            _dragMoved = false;
+            _dragOffsetPixels = 0;
+            _mouseDownX = 0;
+            Capture = false;
+        }
+
+    private void HandleNativeMouseWheel(IntPtr wParam)
+        {
+            long raw = wParam.ToInt64();
+            int delta = unchecked((short)((raw >> 16) & 0xFFFF));
+
+            HandleMouseWheelDelta(delta);
+        }
+
+    private void HandleMouseWheelDelta(int delta)
+        {
+            if (delta == 0 || Maximum <= Minimum)
+                return;
+
+            Focus();
+
+            int notches = delta / WheelDelta;
+
+            if (notches == 0)
+                notches = delta > 0 ? 1 : -1;
+
+            int step = GetWheelSeekStep();
+            int newValue = Value + (step * notches);
+
+            SetValueAndNotify(newValue);
+        }
+
+    private int GetWheelSeekStep()
+        {
+            int range = Math.Max(1, Maximum - Minimum);
+
+            return Math.Clamp(range / 40, 1, 5);
+        }
+
+    private Rectangle GetThumbRectangle()
+        {
+            if (!IsHandleCreated)
+                return Rectangle.Empty;
+
+            var rect = new NativeRect();
+            SendMessage(Handle, TBM_GETTHUMBRECT, IntPtr.Zero, ref rect);
+
+            return rect.ToRectangle();
+        }
+
+    private Rectangle GetChannelRectangle()
+        {
+            if (!IsHandleCreated)
+                return new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
+
+            var rect = new NativeRect();
+            SendMessage(Handle, TBM_GETCHANNELRECT, IntPtr.Zero, ref rect);
+
+            Rectangle channel = rect.ToRectangle();
+
+            if (channel.Width <= 0)
+                channel = new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1));
+
+            return channel;
+        }
+
+    private int GetThumbCenterX()
+        {
+            Rectangle thumb = GetThumbRectangle();
+
+            if (thumb.Width <= 0)
+                return ValueToTrackX(Value);
+
+            return thumb.Left + (thumb.Width / 2);
+        }
+
+    private void SetValueFromTrackX(int x)
+        {
+            SetValueAndNotify(TrackXToValue(x));
+        }
+
+    private int TrackXToValue(int x)
+        {
+            if (Maximum <= Minimum)
+                return Minimum;
+
+            Rectangle channel = GetChannelRectangle();
+
+            int left = channel.Left;
+            int right = Math.Max(left + 1, channel.Right);
+            int clampedX = Math.Clamp(x, left, right);
+
+            double ratio = (clampedX - left) / (double)(right - left);
             int value = Minimum + (int)Math.Round((Maximum - Minimum) * ratio);
 
-            Value = Math.Clamp(value, Minimum, Maximum);
+            return Math.Clamp(value, Minimum, Maximum);
+        }
+
+    private int ValueToTrackX(int value)
+        {
+            if (Maximum <= Minimum)
+                return 0;
+
+            Rectangle channel = GetChannelRectangle();
+
+            int left = channel.Left;
+            int right = Math.Max(left + 1, channel.Right);
+
+            double ratio = (value - Minimum) / (double)(Maximum - Minimum);
+
+            return left + (int)Math.Round((right - left) * ratio);
+        }
+
+    private void SetValueAndNotify(int value)
+        {
+            value = Math.Clamp(value, Minimum, Maximum);
+
+            if (Value == value)
+                return;
+
+            Value = value;
+            SeekRequested?.Invoke(Value);
+        }
+
+    private static Point GetPointFromLParam(IntPtr lParam)
+        {
+            long raw = lParam.ToInt64();
+
+            int x = unchecked((short)(raw & 0xFFFF));
+            int y = unchecked((short)((raw >> 16) & 0xFFFF));
+
+            return new Point(x, y);
+        }
+    }
+
+    private void ApplyAudioStabilityTuning()
+    {
+        try
+        {
+            using var currentProcess = System.Diagnostics.Process.GetCurrentProcess();
+
+            // Perfil Opera Survivor +15:
+            // High sin RealTime. Agresivo, pero no suicida.
+            currentProcess.PriorityClass = System.Diagnostics.ProcessPriorityClass.High;
+            currentProcess.PriorityBoostEnabled = true;
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            System.Threading.ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
+
+            int targetWorkerThreads = Math.Max(workerThreads, Environment.ProcessorCount * 4);
+            int targetCompletionThreads = Math.Max(completionPortThreads, 8);
+
+            System.Threading.ThreadPool.SetMinThreads(targetWorkerThreads, targetCompletionThreads);
+        }
+        catch
+        {
+        }
+    }
+
+    private NAudio.Wave.WaveOutEvent CreateStableWaveOut()
+    {
+        return new NAudio.Wave.WaveOutEvent
+        {
+            // Opera Survivor +15%:
+            // 2500 ms -> 2875 ms
+            // 10 buffers -> 12 buffers
+            DesiredLatency = 2875,
+            NumberOfBuffers = 12
+        };
+    }
+
+    private NAudio.Wave.AudioFileReader CreateStableAudioFileReader(string path)
+    {
+        PrewarmAudioFile(path);
+        return new NAudio.Wave.AudioFileReader(path);
+    }
+
+    private void PrewarmAudioFile(string path)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
+                return;
+
+            const int bufferSize = 1024 * 1024;
+
+            byte[] buffer = new byte[bufferSize];
+
+            using var stream = new System.IO.FileStream(
+                path,
+                System.IO.FileMode.Open,
+                System.IO.FileAccess.Read,
+                System.IO.FileShare.ReadWrite,
+                bufferSize,
+                System.IO.FileOptions.SequentialScan
+            );
+
+            while (stream.Read(buffer, 0, buffer.Length) > 0)
+            {
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private void TryLoadIcon()
+    {
+        try
+        {
+            string[] candidates =
+            [
+                System.IO.Path.Combine(AppContext.BaseDirectory, "LiteAmp.ico"),
+                System.IO.Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "LiteAmp.ico"),
+                System.IO.Path.Combine(Environment.CurrentDirectory, "LiteAmp.ico")
+            ];
+
+            foreach (string candidate in candidates)
+            {
+                try
+                {
+                    string path = System.IO.Path.GetFullPath(candidate);
+
+                    if (System.IO.File.Exists(path))
+                    {
+                        Icon = new System.Drawing.Icon(path);
+                        return;
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            try
+            {
+                System.Drawing.Icon? extractedIcon = System.Drawing.Icon.ExtractAssociatedIcon(System.Windows.Forms.Application.ExecutablePath);
+
+                if (extractedIcon is not null)
+                    Icon = extractedIcon;
+            }
+            catch
+            {
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private System.Windows.Forms.TextBox? _playlistSearchTextBox;
+    private void PlayPlaylistSelectionFromSearch()
+    {
+        if (_playlistBox.Items.Count == 0 || _playlistBox.SelectedIndex < 0)
+            return;
+
+        System.Windows.Forms.Button? playButton =
+            FindButtonByText(this, "Reproducir") ??
+            FindButtonByText(this, "Pausar") ??
+            FindButtonByText(this, "Play");
+
+        if (playButton is not null)
+        {
+            playButton.PerformClick();
+            return;
+        }
+
+        System.Media.SystemSounds.Beep.Play();
+    }
+
+    private void PositionPlaylistSearchControls()
+    {
+        if (_playlistSearchTextBox is null)
+            return;
+
+        System.Windows.Forms.CheckBox? alwaysOnTopCheckBox =
+            FindControlByText<System.Windows.Forms.CheckBox>(this, "Siempre encima");
+
+        const int gap = 16;
+        const int minLeft = 310;
+        const int preferredWidth = 220;
+        const int minWidth = 180;
+
+        if (alwaysOnTopCheckBox is not null)
+        {
+            int rightEdge = alwaysOnTopCheckBox.Left - gap;
+            int width = System.Math.Min(preferredWidth, System.Math.Max(minWidth, rightEdge - minLeft));
+            int left = System.Math.Max(minLeft, rightEdge - width);
+
+            int top = alwaysOnTopCheckBox.Top +
+                      ((alwaysOnTopCheckBox.Height - _playlistSearchTextBox.Height) / 2);
+
+            if (top < 18)
+                top = 18;
+
+            _playlistSearchTextBox.Size = new System.Drawing.Size(width, 24);
+            _playlistSearchTextBox.Location = new System.Drawing.Point(left, top);
+            _playlistSearchTextBox.BringToFront();
+            return;
+        }
+
+        // Fallback si se cambia el texto del checkbox en el futuro.
+        _playlistSearchTextBox.Size = new System.Drawing.Size(220, 24);
+        _playlistSearchTextBox.Location = new System.Drawing.Point(System.Math.Max(330, ClientSize.Width - 382), 54);
+        _playlistSearchTextBox.BringToFront();
+    }
+
+    private static T? FindControlByText<T>(System.Windows.Forms.Control parent, string text)
+        where T : System.Windows.Forms.Control
+    {
+        foreach (System.Windows.Forms.Control control in parent.Controls)
+        {
+            if (control is T typedControl &&
+                string.Equals(control.Text?.Trim(), text, System.StringComparison.CurrentCultureIgnoreCase))
+            {
+                return typedControl;
+            }
+
+            T? nested = FindControlByText<T>(control, text);
+
+            if (nested is not null)
+                return nested;
+        }
+
+        return null;
+    }
+
+    private bool _keyboardShortcutsAttached;
+
+    private void AttachKeyboardShortcutsOnce()
+    {
+        if (_keyboardShortcutsAttached)
+            return;
+
+        _keyboardShortcutsAttached = true;
+
+        KeyPreview = true;
+        KeyDown += HandleLiteAmpGlobalKeyDown;
+
+        _playlistBox.KeyDown += HandlePlaylistKeyboardShortcut;
+    }
+
+    private void HandlePlaylistKeyboardShortcut(object? sender, System.Windows.Forms.KeyEventArgs e)
+    {
+        if (e.KeyCode == System.Windows.Forms.Keys.Enter)
+        {
+            e.SuppressKeyPress = true;
+            PerformPlayPauseFromKeyboard();
+            return;
+        }
+
+        if (e.KeyCode == System.Windows.Forms.Keys.Space)
+        {
+            e.SuppressKeyPress = true;
+            PerformPlayPauseFromKeyboard();
+        }
+    }
+
+    private void HandleLiteAmpGlobalKeyDown(object? sender, System.Windows.Forms.KeyEventArgs e)
+    {
+        if (e.KeyCode != System.Windows.Forms.Keys.Space)
+            return;
+
+        if (IsTimelineKeyboardBlockedControl(ActiveControl))
+            return;
+
+        e.SuppressKeyPress = true;
+        PerformPlayPauseFromKeyboard();
+    }
+
+    private static bool IsTextInputControl(System.Windows.Forms.Control? control)
+    {
+        while (control is not null)
+        {
+            if (control is System.Windows.Forms.TextBoxBase ||
+                control is System.Windows.Forms.ComboBox)
+            {
+                return true;
+            }
+
+            control = control.Parent;
+        }
+
+        return false;
+    }
+
+    private void PerformPlayPauseFromKeyboard()
+    {
+        System.Windows.Forms.Button? playPauseButton =
+            FindButtonByText(this, "Reproducir") ??
+            FindButtonByText(this, "Pausar") ??
+            FindButtonByText(this, "Play") ??
+            FindButtonByText(this, "Pause");
+
+        if (playPauseButton is not null)
+        {
+            playPauseButton.PerformClick();
+            return;
+        }
+
+        System.Media.SystemSounds.Beep.Play();
+    }
+
+    private static System.Windows.Forms.Button? FindButtonByText(System.Windows.Forms.Control parent, string text)
+    {
+        foreach (System.Windows.Forms.Control control in parent.Controls)
+        {
+            if (control is System.Windows.Forms.Button button &&
+                string.Equals(button.Text?.Trim(), text, System.StringComparison.CurrentCultureIgnoreCase))
+            {
+                return button;
+            }
+
+            System.Windows.Forms.Button? nested = FindButtonByText(control, text);
+
+            if (nested is not null)
+                return nested;
+        }
+
+        return null;
+    }
+
+    private readonly System.Collections.Generic.List<System.Collections.Generic.List<string>> _playlistSearchIndex = new();
+    private int _playlistSearchIndexedCount = -1;
+
+    private void RebuildPlaylistSearchIndex()
+    {
+        _playlistSearchIndex.Clear();
+
+        for (int i = 0; i < _playlistBox.Items.Count; i++)
+        {
+            string itemText = System.Convert.ToString(_playlistBox.Items[i]) ?? string.Empty;
+            _playlistSearchIndex.Add(LiteAmpSearchBuildKeys(itemText));
+        }
+
+        _playlistSearchIndexedCount = _playlistBox.Items.Count;
+    }
+
+    private void SearchPlaylistLive()
+    {
+        if (_playlistSearchTextBox is null)
+            return;
+
+        string query = _playlistSearchTextBox.Text.Trim();
+
+        if (query.Length == 0)
+            return;
+
+        if (_playlistBox.Items.Count == 0)
+            return;
+
+        if (_playlistSearchIndexedCount != _playlistBox.Items.Count)
+            RebuildPlaylistSearchIndex();
+
+        string normalizedQuery = LiteAmpSearchNormalize(query);
+
+        if (normalizedQuery.Length == 0)
+            return;
+
+        int bestContainsIndex = -1;
+
+        for (int i = 0; i < _playlistSearchIndex.Count; i++)
+        {
+            foreach (string key in _playlistSearchIndex[i])
+            {
+                if (key.StartsWith(normalizedQuery, System.StringComparison.CurrentCultureIgnoreCase))
+                {
+                    _playlistBox.SelectedIndex = i;
+                    _playlistBox.TopIndex = System.Math.Max(0, i - 2);
+                    return;
+                }
+
+                if (bestContainsIndex < 0 &&
+                    key.IndexOf(normalizedQuery, System.StringComparison.CurrentCultureIgnoreCase) >= 0)
+                {
+                    bestContainsIndex = i;
+                }
+            }
+        }
+
+        if (bestContainsIndex >= 0)
+        {
+            _playlistBox.SelectedIndex = bestContainsIndex;
+            _playlistBox.TopIndex = System.Math.Max(0, bestContainsIndex - 2);
+        }
+    }
+
+    private static System.Collections.Generic.List<string> LiteAmpSearchBuildKeys(string itemText)
+    {
+        var keys = new System.Collections.Generic.List<string>();
+
+        LiteAmpSearchAddKey(keys, itemText);
+
+        string fileName = LiteAmpSearchTryFileName(itemText);
+
+        if (!string.IsNullOrWhiteSpace(fileName))
+        {
+            LiteAmpSearchAddKey(keys, fileName);
+
+            try
+            {
+                string withoutExtension = System.IO.Path.GetFileNameWithoutExtension(fileName);
+                LiteAmpSearchAddKey(keys, withoutExtension);
+            }
+            catch
+            {
+            }
+        }
+
+        return keys;
+    }
+
+    private static void LiteAmpSearchAddKey(System.Collections.Generic.List<string> keys, string value)
+    {
+        string normalized = LiteAmpSearchNormalize(value);
+
+        if (normalized.Length == 0)
+            return;
+
+        if (!keys.Contains(normalized, System.StringComparer.CurrentCultureIgnoreCase))
+            keys.Add(normalized);
+    }
+
+    private static string LiteAmpSearchTryFileName(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        try
+        {
+            string fileName = System.IO.Path.GetFileName(value);
+
+            if (!string.IsNullOrWhiteSpace(fileName))
+                return fileName;
+        }
+        catch
+        {
+        }
+
+        return value;
+    }
+
+    private static string LiteAmpSearchNormalize(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return string.Empty;
+
+        string normalized = text
+            .Replace('_', ' ')
+            .Replace('-', ' ')
+            .Replace('.', ' ')
+            .Replace('[', ' ')
+            .Replace(']', ' ')
+            .Replace('(', ' ')
+            .Replace(')', ' ')
+            .Replace('{', ' ')
+            .Replace('}', ' ')
+            .Trim();
+
+        while (normalized.Contains("  ", System.StringComparison.Ordinal))
+            normalized = normalized.Replace("  ", " ");
+
+        return normalized;
+    }
+
+    private void AttachPlaylistSearchOnce()
+    {
+        if (_playlistSearchTextBox is not null)
+            return;
+
+        _playlistSearchTextBox = new System.Windows.Forms.TextBox
+        {
+            Name = "playlistSearchTextBox",
+            PlaceholderText = "Buscar canción...",
+            Size = new System.Drawing.Size(210, 24),
+            TabStop = true
+        };
+
+        _playlistSearchTextBox.TextChanged += (_, _) => SearchPlaylistLive();
+
+                        _playlistSearchTextBox.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == System.Windows.Forms.Keys.Enter)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                PlayPlaylistSelectionFromSearch();
+                return;
+            }
+
+            if (e.KeyCode == System.Windows.Forms.Keys.Escape)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                _playlistSearchTextBox.Clear();
+            }
+        };
+Controls.Add(_playlistSearchTextBox);
+
+        PositionPlaylistSearchControls();
+
+        _playlistSearchTextBox.BringToFront();
+    }
+
+    private void MovePlaylistSelectionFromSearch(int delta)
+    {
+        if (_playlistBox.Items.Count == 0)
+            return;
+
+        int currentIndex = _playlistBox.SelectedIndex;
+
+        if (currentIndex < 0)
+            currentIndex = 0;
+
+        int nextIndex;
+
+        if (delta == int.MinValue)
+        {
+            nextIndex = 0;
+        }
+        else if (delta == int.MaxValue)
+        {
+            nextIndex = _playlistBox.Items.Count - 1;
+        }
+        else
+        {
+            nextIndex = currentIndex + delta;
+        }
+
+        nextIndex = System.Math.Max(0, System.Math.Min(_playlistBox.Items.Count - 1, nextIndex));
+
+        if (nextIndex == _playlistBox.SelectedIndex)
+            return;
+
+        _playlistBox.SelectedIndex = nextIndex;
+        _playlistBox.TopIndex = System.Math.Max(0, nextIndex - 2);
+    }
+
+    private bool _timelineKeyboardGuardAttached;
+
+    private void AttachTimelineKeyboardGuardOnce()
+    {
+        if (_timelineKeyboardGuardAttached)
+            return;
+
+        _timelineKeyboardGuardAttached = true;
+
+        GuardTrackBarsFromKeyboard(this);
+    }
+
+    private void GuardTrackBarsFromKeyboard(System.Windows.Forms.Control parent)
+    {
+        foreach (System.Windows.Forms.Control control in parent.Controls)
+        {
+            if (control is System.Windows.Forms.TrackBar trackBar)
+            {
+                trackBar.TabStop = false;
+
+                trackBar.KeyDown -= HandleTrackBarKeyDown;
+                trackBar.KeyDown += HandleTrackBarKeyDown;
+
+                trackBar.PreviewKeyDown -= HandleTrackBarPreviewKeyDown;
+                trackBar.PreviewKeyDown += HandleTrackBarPreviewKeyDown;
+
+                trackBar.Enter += (_, _) => BeginInvoke(new Action(ReturnFocusToPlaylistFromTrackBar));
+            }
+
+            if (control.HasChildren)
+                GuardTrackBarsFromKeyboard(control);
+        }
+    }
+
+    private void HandleTrackBarPreviewKeyDown(object? sender, System.Windows.Forms.PreviewKeyDownEventArgs e)
+    {
+        if (e.KeyCode is System.Windows.Forms.Keys.Left or
+            System.Windows.Forms.Keys.Right or
+            System.Windows.Forms.Keys.Up or
+            System.Windows.Forms.Keys.Down or
+            System.Windows.Forms.Keys.Home or
+            System.Windows.Forms.Keys.End or
+            System.Windows.Forms.Keys.PageUp or
+            System.Windows.Forms.Keys.PageDown or
+            System.Windows.Forms.Keys.Space)
+        {
+            BeginInvoke(new Action(ReturnFocusToPlaylistFromTrackBar));
+        }
+    }
+
+    private void HandleTrackBarKeyDown(object? sender, System.Windows.Forms.KeyEventArgs e)
+    {
+        if (e.KeyCode is System.Windows.Forms.Keys.Left or
+            System.Windows.Forms.Keys.Right or
+            System.Windows.Forms.Keys.Up or
+            System.Windows.Forms.Keys.Down or
+            System.Windows.Forms.Keys.Home or
+            System.Windows.Forms.Keys.End or
+            System.Windows.Forms.Keys.PageUp or
+            System.Windows.Forms.Keys.PageDown or
+            System.Windows.Forms.Keys.Space)
+        {
+            e.SuppressKeyPress = true;
+            BeginInvoke(new Action(ReturnFocusToPlaylistFromTrackBar));
+        }
+    }
+
+    private static bool IsTimelineKeyboardBlockedControl(System.Windows.Forms.Control? control)
+    {
+        while (control is not null)
+        {
+            if (control is System.Windows.Forms.TextBoxBase ||
+                control is System.Windows.Forms.ComboBox ||
+                control is System.Windows.Forms.TrackBar)
+            {
+                return true;
+            }
+
+            control = control.Parent;
+        }
+
+        return false;
+    }
+
+    private bool _startupFocusFixAttached;
+    private bool _emptyPlaylistFocusGuardAttached;
+    private LiteAmpFocusSink? _emptyPlaylistFocusSink;
+
+    private void AttachStartupFocusFixOnce()
+    {
+        if (_startupFocusFixAttached)
+            return;
+
+        _startupFocusFixAttached = true;
+
+        EnsureEmptyPlaylistFocusSink();
+        DisableComboBoxTabStops(this);
+        HookEmptyPlaylistListBoxFocus();
+
+        BeginInvoke(new Action(FocusPlaylistOrSink));
+    }
+
+    private void EnsureEmptyPlaylistFocusSink()
+    {
+        if (_emptyPlaylistFocusSink is not null && !_emptyPlaylistFocusSink.IsDisposed)
+            return;
+
+        _emptyPlaylistFocusSink = new LiteAmpFocusSink
+        {
+            Name = "emptyPlaylistFocusSink",
+            Size = new System.Drawing.Size(1, 1),
+            Location = new System.Drawing.Point(-200, -200),
+            TabStop = false
+        };
+
+        Controls.Add(_emptyPlaylistFocusSink);
+        _emptyPlaylistFocusSink.SendToBack();
+    }
+
+    private void HookEmptyPlaylistListBoxFocus()
+    {
+        if (_emptyPlaylistFocusGuardAttached)
+            return;
+
+        _emptyPlaylistFocusGuardAttached = true;
+
+        _playlistBox.Enter += (_, _) =>
+        {
+            if (_playlistBox.Items.Count == 0)
+                BeginInvoke(new Action(FocusEmptyPlaylistSink));
+        };
+
+        _playlistBox.GotFocus += (_, _) =>
+        {
+            if (_playlistBox.Items.Count == 0)
+                BeginInvoke(new Action(FocusEmptyPlaylistSink));
+        };
+
+        _playlistBox.MouseDown += (_, _) =>
+        {
+            if (_playlistBox.Items.Count == 0)
+                BeginInvoke(new Action(FocusEmptyPlaylistSink));
+        };
+    }
+
+    private void FocusEmptyPlaylistSink()
+    {
+        try
+        {
+            EnsureEmptyPlaylistFocusSink();
+
+            if (_emptyPlaylistFocusSink is null || _emptyPlaylistFocusSink.IsDisposed)
+                return;
+
+            ActiveControl = _emptyPlaylistFocusSink;
+            _emptyPlaylistFocusSink.Select();
+            _emptyPlaylistFocusSink.Focus();
+        }
+        catch
+        {
+        }
+    }
+
+    private void ReturnFocusToPlaylistFromTrackBar()
+    {
+        FocusPlaylistOrSink();
+    }
+
+    private void DisableComboBoxTabStops(System.Windows.Forms.Control parent)
+    {
+        foreach (System.Windows.Forms.Control control in parent.Controls)
+        {
+            if (control is System.Windows.Forms.ComboBox comboBox)
+            {
+                comboBox.TabStop = false;
+                comboBox.PreviewKeyDown -= HandleComboBoxPreviewKeyDown;
+                comboBox.PreviewKeyDown += HandleComboBoxPreviewKeyDown;
+            }
+
+            if (control.HasChildren)
+                DisableComboBoxTabStops(control);
+        }
+    }
+
+    private void HandleComboBoxPreviewKeyDown(object? sender, System.Windows.Forms.PreviewKeyDownEventArgs e)
+    {
+        if (e.KeyCode is System.Windows.Forms.Keys.Up or
+            System.Windows.Forms.Keys.Down or
+            System.Windows.Forms.Keys.Left or
+            System.Windows.Forms.Keys.Right)
+        {
+            BeginInvoke(new Action(FocusPlaylistOrSink));
+        }
+    }
+
+    private sealed class LiteAmpFocusSink : System.Windows.Forms.Control
+    {
+        public LiteAmpFocusSink()
+        {
+            SetStyle(System.Windows.Forms.ControlStyles.Selectable, true);
+        }
+    }
+
+    private bool _playlistNativeNavigationAttached;
+
+    private const int LB_SETCURSEL = 0x0186;
+    private const int LB_GETCURSEL = 0x0188;
+    private const int LB_GETTOPINDEX = 0x018E;
+    private const int LB_SETTOPINDEX = 0x0197;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SendMessageW")]
+    private static extern System.IntPtr LiteAmpListBoxSendMessage(
+        System.IntPtr hWnd,
+        int msg,
+        System.IntPtr wParam,
+        System.IntPtr lParam
+    );
+
+    private void AttachPlaylistNativeNavigationOnce()
+    {
+        if (_playlistNativeNavigationAttached)
+            return;
+
+        _playlistNativeNavigationAttached = true;
+
+        EnablePlaylistNativeDoubleBuffering();
+
+        _playlistBox.KeyDown -= HandlePlaylistNativeKeyDown;
+        _playlistBox.KeyDown += HandlePlaylistNativeKeyDown;
+
+        _playlistBox.MouseWheel -= HandlePlaylistNativeMouseWheel;
+        _playlistBox.MouseWheel += HandlePlaylistNativeMouseWheel;
+
+        if (_playlistSearchTextBox is not null)
+        {
+            _playlistSearchTextBox.KeyDown -= HandlePlaylistSearchNativeKeyDown;
+            _playlistSearchTextBox.KeyDown += HandlePlaylistSearchNativeKeyDown;
+        }
+    }
+
+    private void HandlePlaylistNativeKeyDown(object? sender, System.Windows.Forms.KeyEventArgs e)
+    {
+        if (!IsPlaylistNativeNavigationKey(e.KeyCode))
+            return;
+
+        e.Handled = true;
+        e.SuppressKeyPress = true;
+
+        if (e.KeyCode == System.Windows.Forms.Keys.Down)
+        {
+            MovePlaylistSelectionNative(1);
+            return;
+        }
+
+        if (e.KeyCode == System.Windows.Forms.Keys.Up)
+        {
+            MovePlaylistSelectionNative(-1);
+            return;
+        }
+
+        if (e.KeyCode == System.Windows.Forms.Keys.PageDown)
+        {
+            MovePlaylistSelectionNative(System.Math.Max(4, GetPlaylistNativeVisibleCount() - 2));
+            return;
+        }
+
+        if (e.KeyCode == System.Windows.Forms.Keys.PageUp)
+        {
+            MovePlaylistSelectionNative(-System.Math.Max(4, GetPlaylistNativeVisibleCount() - 2));
+            return;
+        }
+
+        if (e.KeyCode == System.Windows.Forms.Keys.Home)
+        {
+            SetPlaylistSelectionNative(0);
+            return;
+        }
+
+        if (e.KeyCode == System.Windows.Forms.Keys.End)
+        {
+            SetPlaylistSelectionNative(_playlistBox.Items.Count - 1);
+        }
+    }
+
+    private void HandlePlaylistSearchNativeKeyDown(object? sender, System.Windows.Forms.KeyEventArgs e)
+    {
+        if (!IsPlaylistNativeNavigationKey(e.KeyCode))
+            return;
+
+        e.Handled = true;
+        e.SuppressKeyPress = true;
+
+        if (e.KeyCode == System.Windows.Forms.Keys.Down)
+        {
+            MovePlaylistSelectionNative(1);
+            return;
+        }
+
+        if (e.KeyCode == System.Windows.Forms.Keys.Up)
+        {
+            MovePlaylistSelectionNative(-1);
+            return;
+        }
+
+        if (e.KeyCode == System.Windows.Forms.Keys.PageDown)
+        {
+            MovePlaylistSelectionNative(System.Math.Max(4, GetPlaylistNativeVisibleCount() - 2));
+            return;
+        }
+
+        if (e.KeyCode == System.Windows.Forms.Keys.PageUp)
+        {
+            MovePlaylistSelectionNative(-System.Math.Max(4, GetPlaylistNativeVisibleCount() - 2));
+            return;
+        }
+
+        if (e.KeyCode == System.Windows.Forms.Keys.Home)
+        {
+            SetPlaylistSelectionNative(0);
+            return;
+        }
+
+        if (e.KeyCode == System.Windows.Forms.Keys.End)
+        {
+            SetPlaylistSelectionNative(_playlistBox.Items.Count - 1);
+        }
+    }
+
+    private void HandlePlaylistNativeMouseWheel(object? sender, System.Windows.Forms.MouseEventArgs e)
+    {
+        if (_playlistBox.Items.Count == 0)
+            return;
+
+        if (e is System.Windows.Forms.HandledMouseEventArgs handled)
+            handled.Handled = true;
+
+        int notches = System.Math.Max(1, System.Math.Abs(e.Delta) / 120);
+        int direction = e.Delta > 0 ? -1 : 1;
+        int step = System.Math.Max(3, GetPlaylistNativeVisibleCount() / 3);
+
+        ApplyPlaylistNativeWheelScroll(direction * step * notches);
+    }
+
+    private void MovePlaylistSelectionNative(int delta)
+    {
+        if (_playlistBox.Items.Count == 0)
+            return;
+
+        int currentIndex = GetPlaylistSelectedIndexNative();
+
+        if (currentIndex < 0)
+        {
+            if (delta > 0)
+            {
+                SetPlaylistSelectionNative(0);
+                return;
+            }
+
+            if (delta < 0)
+            {
+                SetPlaylistSelectionNative(_playlistBox.Items.Count - 1);
+                return;
+            }
+
+            return;
+        }
+
+        SetPlaylistSelectionNative(currentIndex + delta);
+    }
+
+    private int GetPlaylistSelectedIndexNative()
+    {
+        if (!_playlistBox.IsHandleCreated)
+            return _playlistBox.SelectedIndex;
+
+        return LiteAmpListBoxSendMessage(
+            _playlistBox.Handle,
+            LB_GETCURSEL,
+            System.IntPtr.Zero,
+            System.IntPtr.Zero
+        ).ToInt32();
+    }
+
+    private int GetPlaylistTopIndexNative()
+    {
+        if (!_playlistBox.IsHandleCreated)
+            return _playlistBox.TopIndex;
+
+        int topIndex = LiteAmpListBoxSendMessage(
+            _playlistBox.Handle,
+            LB_GETTOPINDEX,
+            System.IntPtr.Zero,
+            System.IntPtr.Zero
+        ).ToInt32();
+
+        return System.Math.Max(0, topIndex);
+    }
+
+    private void SetPlaylistTopIndexNative(int index)
+    {
+        if (_playlistBox.Items.Count == 0 || !_playlistBox.IsHandleCreated)
+            return;
+
+        int maxTop = System.Math.Max(0, _playlistBox.Items.Count - GetPlaylistNativeVisibleCount());
+        int safeIndex = System.Math.Max(0, System.Math.Min(maxTop, index));
+
+        LiteAmpListBoxSendMessage(
+            _playlistBox.Handle,
+            LB_SETTOPINDEX,
+            new System.IntPtr(safeIndex),
+            System.IntPtr.Zero
+        );
+    }
+
+    private void EnsurePlaylistNativeSelectionVisible(int selectedIndex)
+    {
+        if (_playlistBox.Items.Count == 0)
+            return;
+
+        int visibleCount = GetPlaylistNativeVisibleCount();
+        int topIndex = GetPlaylistTopIndexNative();
+        int bottomIndex = System.Math.Min(_playlistBox.Items.Count - 1, topIndex + visibleCount - 1);
+
+        const int edgeMargin = 1;
+
+        if (selectedIndex < topIndex + edgeMargin)
+        {
+            SetPlaylistTopIndexNative(selectedIndex - edgeMargin);
+            return;
+        }
+
+        if (selectedIndex > bottomIndex - edgeMargin)
+        {
+            SetPlaylistTopIndexNative(selectedIndex - visibleCount + 1 + edgeMargin);
+        }
+    }
+
+    private int GetPlaylistNativeVisibleCount()
+    {
+        int itemHeight = _playlistBox.ItemHeight;
+
+        if (itemHeight <= 0)
+            itemHeight = 16;
+
+        return System.Math.Max(1, _playlistBox.ClientSize.Height / itemHeight);
+    }
+
+    private void EnablePlaylistNativeDoubleBuffering()
+    {
+        try
+        {
+            typeof(System.Windows.Forms.Control)
+                .GetProperty(
+                    "DoubleBuffered",
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic
+                )
+                ?.SetValue(_playlistBox, true, null);
+        }
+        catch
+        {
+        }
+    }
+
+    private static bool IsPlaylistNativeNavigationKey(System.Windows.Forms.Keys key)
+    {
+        return key == System.Windows.Forms.Keys.Up ||
+               key == System.Windows.Forms.Keys.Down ||
+               key == System.Windows.Forms.Keys.PageUp ||
+               key == System.Windows.Forms.Keys.PageDown ||
+               key == System.Windows.Forms.Keys.Home ||
+               key == System.Windows.Forms.Keys.End;
+    }
+
+
+    protected override bool ProcessCmdKey(ref System.Windows.Forms.Message msg, System.Windows.Forms.Keys keyData)
+    {
+        if (LiteAmpHandlePlaylistIntentKey(keyData))
+            return true;
+
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    private bool LiteAmpHandlePlaylistIntentKey(System.Windows.Forms.Keys keyData)
+    {
+        System.Windows.Forms.Keys key = keyData & System.Windows.Forms.Keys.KeyCode;
+
+        if (key == System.Windows.Forms.Keys.Enter)
+            return LiteAmpHandleEnterIntent();
+
+        if (key == System.Windows.Forms.Keys.Space)
+            return LiteAmpHandleSpaceIntent();
+
+        return false;
+    }
+
+    private bool LiteAmpHandleEnterIntent()
+    {
+        if (ActiveControl is System.Windows.Forms.Button)
+            return false;
+
+        if (LiteAmpHasPlaylistSelection())
+        {
+            LiteAmpPlayMarkedPlaylistItem();
+            return true;
+        }
+
+        LiteAmpTogglePlayPause();
+        return true;
+    }
+
+    private bool LiteAmpHandleSpaceIntent()
+    {
+        // Si el usuario está escribiendo en búsqueda, Space debe seguir siendo espacio.
+        // Romper búsquedas tipo "Linkin Park" sería una estupidez con interfaz.
+        if (LiteAmpIsPlaylistSearchBoxActive())
+            return false;
+
+        if (LiteAmpIsEditableTextInputActive())
+            return false;
+
+        LiteAmpTogglePlayPause();
+        return true;
+    }
+
+    private bool LiteAmpHasPlaylistSelection()
+    {
+        try
+        {
+            return _playlistBox.Items.Count > 0 && _playlistBox.SelectedIndex >= 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void LiteAmpPlayMarkedPlaylistItem()
+    {
+        try
+        {
+            if (!LiteAmpRaisePlaylistDoubleClick())
+            {
+                // Fallback seguro: solo pulsa Reproducir si el botón está en modo reproducir.
+                // No pulsa Pausar aquí, porque Enter sobre canción marcada no debe pausar.
+                LiteAmpClickButtonByText(false, "Reproducir", "▶", "Play");
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private void LiteAmpTogglePlayPause()
+    {
+        try
+        {
+            if (LiteAmpClickButtonByText(true, "Pausar", "Reanudar", "Reproducir", "⏸", "▶", "Pause", "Play"))
+                return;
+        }
+        catch
+        {
+        }
+    }
+
+    private bool LiteAmpRaisePlaylistDoubleClick()
+    {
+        try
+        {
+            System.Reflection.MethodInfo? method = typeof(System.Windows.Forms.Control).GetMethod(
+                "OnDoubleClick",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic
+            );
+
+            if (method is null)
+                return false;
+
+            method.Invoke(_playlistBox, new object[] { System.EventArgs.Empty });
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private bool LiteAmpClickButtonByText(bool allowPauseButton, params string[] texts)
+    {
+        System.Windows.Forms.Button? button = LiteAmpFindButtonByText(this, allowPauseButton, texts);
+
+        if (button is null)
+            return false;
+
+        button.PerformClick();
+        return true;
+    }
+
+    private System.Windows.Forms.Button? LiteAmpFindButtonByText(
+        System.Windows.Forms.Control parent,
+        bool allowPauseButton,
+        params string[] texts
+    )
+    {
+        foreach (System.Windows.Forms.Control control in parent.Controls)
+        {
+            if (control is System.Windows.Forms.Button button)
+            {
+                string text = (button.Text ?? string.Empty).Trim();
+
+                foreach (string wanted in texts)
+                {
+                    if (text.Equals(wanted, System.StringComparison.OrdinalIgnoreCase) ||
+                        text.Contains(wanted, System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (!allowPauseButton &&
+                            text.Contains("Pausar", System.StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        return button;
+                    }
+                }
+            }
+
+            if (control.HasChildren)
+            {
+                System.Windows.Forms.Button? child = LiteAmpFindButtonByText(control, allowPauseButton, texts);
+
+                if (child is not null)
+                    return child;
+            }
+        }
+
+        return null;
+    }
+
+    private bool LiteAmpIsPlaylistSearchBoxActive()
+    {
+        return ActiveControl == _playlistSearchTextBox;
+    }
+
+    private bool LiteAmpIsEditableTextInputActive()
+    {
+        if (ActiveControl is System.Windows.Forms.TextBoxBase textBox)
+            return !textBox.ReadOnly;
+
+        return false;
+    }
+
+    private bool _playlistDeselectFilterAttached;
+    private LiteAmpPlaylistDeselectMessageFilter? _playlistDeselectFilter;
+    private LiteAmpDeselectFocusSink? _playlistDeselectFocusSink;
+
+    private const int LiteAmpDeselect_LB_SETCURSEL = 0x0186;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SendMessageW")]
+    private static extern System.IntPtr LiteAmpDeselectSendMessage(
+        System.IntPtr hWnd,
+        int msg,
+        System.IntPtr wParam,
+        System.IntPtr lParam
+    );
+
+    private void LiteAmpInstallPlaylistDeselectFilterOnce()
+    {
+        if (_playlistDeselectFilterAttached)
+            return;
+
+        _playlistDeselectFilterAttached = true;
+
+        LiteAmpEnsureDeselectFocusSink();
+
+        _playlistDeselectFilter = new LiteAmpPlaylistDeselectMessageFilter(this);
+        System.Windows.Forms.Application.AddMessageFilter(_playlistDeselectFilter);
+
+        FormClosed += (_, _) =>
+        {
+            if (_playlistDeselectFilter is not null)
+                System.Windows.Forms.Application.RemoveMessageFilter(_playlistDeselectFilter);
+        };
+    }
+
+    private void LiteAmpHandleGlobalPlaylistDeselectMouseDown(System.IntPtr hwnd)
+    {
+        try
+        {
+            System.Windows.Forms.Control? clickedControl = System.Windows.Forms.Control.FromChildHandle(hwnd) ?? System.Windows.Forms.Control.FromHandle(hwnd);
+
+            if (clickedControl is null)
+                return;
+
+            if (LiteAmpIsControlInsidePlaylist(clickedControl))
+                return;
+
+            if (LiteAmpShouldIgnoreGlobalDeselectClick(clickedControl))
+                return;
+
+            bool moveFocusToSink = !(clickedControl is System.Windows.Forms.TextBoxBase);
+
+        if (ReferenceEquals(clickedControl, _playlistSearchTextBox))
+            moveFocusToSink = false;
+
+            LiteAmpClearPlaylistSelectionStrong(moveFocusToSink);
+        }
+        catch
+        {
+        }
+    }
+
+    private bool LiteAmpShouldIgnoreGlobalDeselectClick(System.Windows.Forms.Control control)
+    {
+        System.Windows.Forms.Control? current = control;
+
+        while (current is not null)
+        {
+            if (current is System.Windows.Forms.Button ||
+                
+                current is System.Windows.Forms.ComboBox ||
+                current is System.Windows.Forms.CheckBox ||
+                current is System.Windows.Forms.RadioButton)
+            {
+                return true;
+            }
+
+            if (ReferenceEquals(current, _playlistBox))
+                return true;
+
+            current = current.Parent;
+        }
+
+        return false;
+    }
+
+    private bool LiteAmpIsControlInsidePlaylist(System.Windows.Forms.Control control)
+    {
+        return LiteAmpIsSameOrChild(control, _playlistBox);
+    }
+
+    private static bool LiteAmpIsSameOrChild(System.Windows.Forms.Control control, System.Windows.Forms.Control parent)
+    {
+        System.Windows.Forms.Control? current = control;
+
+        while (current is not null)
+        {
+            if (ReferenceEquals(current, parent))
+                return true;
+
+            current = current.Parent;
+        }
+
+        return false;
+    }
+
+    private void LiteAmpClearPlaylistSelectionStrong(bool moveFocusToSink)
+    {
+        try
+        {
+            if (_playlistBox.Items.Count == 0)
+                return;
+
+            if (_playlistBox.IsHandleCreated)
+            {
+                LiteAmpDeselectSendMessage(
+                    _playlistBox.Handle,
+                    LiteAmpDeselect_LB_SETCURSEL,
+                    new System.IntPtr(-1),
+                    System.IntPtr.Zero
+                );
+            }
+
+            _playlistBox.ClearSelected();
+            _playlistBox.SelectedIndex = -1;
+            _playlistBox.Invalidate();
+
+            if (moveFocusToSink)
+                LiteAmpFocusDeselectSink();
+        }
+        catch
+        {
+        }
+    }
+
+    private void LiteAmpEnsureDeselectFocusSink()
+    {
+        if (_playlistDeselectFocusSink is not null && !_playlistDeselectFocusSink.IsDisposed)
+            return;
+
+        _playlistDeselectFocusSink = new LiteAmpDeselectFocusSink
+        {
+            Name = "playlistDeselectFocusSink",
+            Size = new System.Drawing.Size(1, 1),
+            Location = new System.Drawing.Point(-280, -280),
+            TabStop = false
+        };
+
+        Controls.Add(_playlistDeselectFocusSink);
+        _playlistDeselectFocusSink.SendToBack();
+    }
+
+    private void LiteAmpFocusDeselectSink()
+    {
+        try
+        {
+            LiteAmpEnsureDeselectFocusSink();
+
+            if (_playlistDeselectFocusSink is null || _playlistDeselectFocusSink.IsDisposed)
+                return;
+
+            ActiveControl = _playlistDeselectFocusSink;
+            _playlistDeselectFocusSink.Select();
+            _playlistDeselectFocusSink.Focus();
+        }
+        catch
+        {
+        }
+    }
+
+    private void FocusPlaylistOrSink()
+    {
+        try
+        {
+            if (_playlistBox.Items.Count > 0 &&
+                _playlistBox.SelectedIndex >= 0 &&
+                _playlistBox.CanFocus)
+            {
+                ActiveControl = _playlistBox;
+                _playlistBox.Focus();
+                return;
+            }
+
+            LiteAmpFocusDeselectSink();
+        }
+        catch
+        {
+        }
+    }
+
+    private void FocusPlaylistIfUseful()
+    {
+        FocusPlaylistOrSink();
+    }
+
+    private void SetStartupFocusWithoutEmptyPlaylistCue()
+    {
+        try
+        {
+            if (_playlistBox.Items.Count > 0 &&
+                _playlistBox.SelectedIndex >= 0 &&
+                _playlistBox.CanFocus)
+            {
+                ActiveControl = _playlistBox;
+                _playlistBox.Focus();
+                return;
+            }
+
+            LiteAmpFocusDeselectSink();
+        }
+        catch
+        {
+        }
+    }
+
+    private sealed class LiteAmpDeselectFocusSink : System.Windows.Forms.Control
+    {
+        public LiteAmpDeselectFocusSink()
+        {
+            SetStyle(System.Windows.Forms.ControlStyles.Selectable, true);
+        }
+    }
+
+    private sealed class LiteAmpPlaylistDeselectMessageFilter : System.Windows.Forms.IMessageFilter
+    {
+        private const int WM_LBUTTONDOWN = 0x0201;
+        private readonly MainForm _owner;
+
+        public LiteAmpPlaylistDeselectMessageFilter(MainForm owner)
+        {
+            _owner = owner;
+        }
+
+        public bool PreFilterMessage(ref System.Windows.Forms.Message m)
+        {
+            if (m.Msg == WM_LBUTTONDOWN)
+                _owner.LiteAmpHandleGlobalPlaylistDeselectMouseDown(m.HWnd);
+
+            return false;
+        }
+    }
+
+    private void SetPlaylistSelectionNative(int index)
+    {
+        if (_playlistBox.Items.Count == 0)
+            return;
+
+        int safeIndex = System.Math.Max(0, System.Math.Min(_playlistBox.Items.Count - 1, index));
+
+        if (!_playlistBox.IsHandleCreated)
+        {
+            if (_playlistBox.SelectedIndex != safeIndex)
+                _playlistBox.SelectedIndex = safeIndex;
+
+            return;
+        }
+
+        int currentIndex = GetPlaylistSelectedIndexNative();
+
+        // Evita redibujado fantasma cuando se mantiene flecha en el borde.
+        if (currentIndex == safeIndex)
+            return;
+
+        LiteAmpListBoxSendMessage(
+            _playlistBox.Handle,
+            LB_SETCURSEL,
+            new System.IntPtr(safeIndex),
+            System.IntPtr.Zero
+        );
+
+        // No EnsureVisible manual. No Invalidate manual.
+        // LB_SETCURSEL ya mueve el ListBox cuando debe.
+    }
+
+    private void ApplyPlaylistNativeWheelScroll(int delta)
+    {
+        if (_playlistBox.Items.Count == 0)
+            return;
+
+        int topIndex = GetPlaylistTopIndexNative();
+        SetPlaylistTopIndexNative(topIndex + delta);
+
+        // No Invalidate manual: SetTopIndex repinta lo necesario.
+    }
+
+    private void AddPaths(IEnumerable<string> paths)
+    {
+        int added = 0;
+        var candidates = new System.Collections.Generic.List<string>();
+
+        foreach (string path in paths)
+        {
+            if (System.IO.File.Exists(path))
+            {
+                candidates.Add(path);
+                continue;
+            }
+
+            if (System.IO.Directory.Exists(path))
+            {
+                foreach (string file in EnumerateSupportedFiles(path))
+                    candidates.Add(file);
+            }
+        }
+
+        if (candidates.Count == 0)
+        {
+            ShowStatus("No se añadieron pistas nuevas");
+            return;
+        }
+
+        _playlistBox.BeginUpdate();
+
+        try
+        {
+            foreach (string file in candidates)
+            {
+                if (AddTrack(file))
+                    added++;
+            }
+
+            if (_currentIndex < 0 && _playlist.Count > 0)
+            {
+                _currentIndex = 0;
+                _playlistBox.SelectedIndex = 0;
+                UpdateTitleLabel();
+            }
+        }
+        finally
+        {
+            _playlistBox.EndUpdate();
+        }
+
+        if (added > 0)
+        {
+                try
+                {
+                    RebuildPlaylistSearchIndex();
+                }
+                catch
+                {
+                }
+            ShowStatus($"Añadidas {added} pista(s)");
+        }
+        else
+        {
+            ShowStatus("No se añadieron pistas nuevas");
+        }
+    }
+
+    private void RefreshPlaybackVisualState()
+    {
+        bool hasTrack = _audio.HasTrack;
+        bool isPlaying = _audio.IsPlaying;
+
+        if (isPlaying)
+        {
+            ApplyAccentButtonStyle(_playButton);
+            _titleLabel.BackColor = _playingSurface;
+            _statusLabel.ForeColor = _accent;
+            _timeLabel.ForeColor = _accent;
+            return;
+        }
+
+        ApplyDefaultButtonStyle(_playButton);
+
+        if (hasTrack)
+        {
+            _titleLabel.BackColor = _pausedSurface;
+            _statusLabel.ForeColor = _textMuted;
+            _timeLabel.ForeColor = _textMuted;
+            return;
+        }
+
+        _titleLabel.BackColor = _panel;
+        _statusLabel.ForeColor = _textMuted;
+        _timeLabel.ForeColor = _textMuted;
+    }
+
+    private bool _liteAmpArrowFilterAttached;
+    private LiteAmpArrowMessageFilter? _liteAmpArrowMessageFilter;
+    private System.Windows.Forms.Timer? _liteAmpArrowTimer;
+    private int _liteAmpArrowDelta;
+    private bool _liteAmpArrowActive;
+
+    private void AttachLiteAmpArrowMessageFilterOnce()
+    {
+        if (_liteAmpArrowFilterAttached)
+            return;
+
+        _liteAmpArrowFilterAttached = true;
+
+        _liteAmpArrowTimer = new System.Windows.Forms.Timer
+        {
+            Interval = 180
+        };
+
+        _liteAmpArrowTimer.Tick += (_, _) =>
+        {
+            if (_liteAmpArrowActive && _liteAmpArrowDelta != 0)
+            {
+                if (_liteAmpArrowTimer.Interval != 55)
+                    _liteAmpArrowTimer.Interval = 55;
+
+                LiteAmpArrowMove(_liteAmpArrowDelta);
+            }
+        };
+
+        _playlistBox.KeyDown -= HandlePlaylistNativeKeyDown;
+
+        if (_playlistSearchTextBox is not null)
+            _playlistSearchTextBox.KeyDown -= HandlePlaylistSearchNativeKeyDown;
+
+        _liteAmpArrowMessageFilter = new LiteAmpArrowMessageFilter(this);
+        System.Windows.Forms.Application.AddMessageFilter(_liteAmpArrowMessageFilter);
+
+        FormClosed += (_, _) =>
+        {
+            try
+            {
+                if (_liteAmpArrowMessageFilter is not null)
+                    System.Windows.Forms.Application.RemoveMessageFilter(_liteAmpArrowMessageFilter);
+
+                _liteAmpArrowTimer?.Stop();
+                _liteAmpArrowTimer?.Dispose();
+            }
+            catch
+            {
+            }
+        };
+    }
+
+    private bool LiteAmpArrowShouldHandle()
+    {
+        try
+        {
+            System.Windows.Forms.Control? active = ActiveControl;
+
+            return ReferenceEquals(active, _playlistBox) ||
+                   ReferenceEquals(active, _playlistSearchTextBox);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void LiteAmpArrowStop()
+    {
+        _liteAmpArrowActive = false;
+        _liteAmpArrowDelta = 0;
+        _liteAmpArrowTimer?.Stop();
+    }
+
+    private void LiteAmpArrowMove(int delta)
+    {
+        if (_playlistBox.Items.Count == 0)
+            return;
+
+        int currentIndex = _playlistBox.SelectedIndex;
+
+        if (currentIndex < 0)
+            currentIndex = delta > 0 ? -1 : _playlistBox.Items.Count;
+
+        LiteAmpArrowSetSelection(currentIndex + delta);
+    }
+
+    private void LiteAmpArrowSetSelection(int index)
+    {
+        if (_playlistBox.Items.Count == 0)
+            return;
+
+        int safeIndex = System.Math.Max(0, System.Math.Min(_playlistBox.Items.Count - 1, index));
+
+        if (_playlistBox.SelectedIndex == safeIndex)
+            return;
+
+        _playlistBox.SelectedIndex = safeIndex;
+        LiteAmpArrowEnsureVisible(safeIndex);
+    }
+
+    private void LiteAmpArrowEnsureVisible(int selectedIndex)
+    {
+        try
+        {
+            if (_playlistBox.Items.Count == 0)
+                return;
+
+            int itemHeight = _playlistBox.ItemHeight;
+
+            if (itemHeight <= 0)
+                itemHeight = 16;
+
+            int visibleCount = System.Math.Max(1, _playlistBox.ClientSize.Height / itemHeight);
+            int topIndex = _playlistBox.TopIndex;
+            int bottomIndex = System.Math.Min(_playlistBox.Items.Count - 1, topIndex + visibleCount - 1);
+
+            const int edgeMargin = 2;
+
+            if (selectedIndex < topIndex + edgeMargin)
+            {
+                int newTop = System.Math.Max(0, selectedIndex - edgeMargin);
+
+                if (_playlistBox.TopIndex != newTop)
+                    _playlistBox.TopIndex = newTop;
+
+                return;
+            }
+
+            if (selectedIndex > bottomIndex - edgeMargin)
+            {
+                int maxTop = System.Math.Max(0, _playlistBox.Items.Count - visibleCount);
+                int newTop = selectedIndex - visibleCount + 1 + edgeMargin;
+                newTop = System.Math.Max(0, System.Math.Min(maxTop, newTop));
+
+                if (_playlistBox.TopIndex != newTop)
+                    _playlistBox.TopIndex = newTop;
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private static bool LiteAmpArrowIsNavKey(System.Windows.Forms.Keys key)
+    {
+        return key == System.Windows.Forms.Keys.Up ||
+               key == System.Windows.Forms.Keys.Down ||
+               key == System.Windows.Forms.Keys.PageUp ||
+               key == System.Windows.Forms.Keys.PageDown ||
+               key == System.Windows.Forms.Keys.Home ||
+               key == System.Windows.Forms.Keys.End;
+    }
+
+    private sealed class LiteAmpArrowMessageFilter : System.Windows.Forms.IMessageFilter
+    {
+        private const int WM_KEYDOWN = 0x0100;
+        private const int WM_KEYUP = 0x0101;
+        private const int WM_SYSKEYDOWN = 0x0104;
+        private const int WM_SYSKEYUP = 0x0105;
+
+        private readonly MainForm _owner;
+
+        public LiteAmpArrowMessageFilter(MainForm owner)
+        {
+            _owner = owner;
+        }
+
+        public bool PreFilterMessage(ref System.Windows.Forms.Message m)
+        {
+            if (m.Msg != WM_KEYDOWN &&
+                m.Msg != WM_KEYUP &&
+                m.Msg != WM_SYSKEYDOWN &&
+                m.Msg != WM_SYSKEYUP)
+            {
+                return false;
+            }
+
+            var key = (System.Windows.Forms.Keys)((int)m.WParam) & System.Windows.Forms.Keys.KeyCode;
+
+            if (!LiteAmpArrowIsNavKey(key))
+                return false;
+
+            if (!_owner.LiteAmpArrowShouldHandle())
+                return false;
+
+            if (m.Msg == WM_KEYUP || m.Msg == WM_SYSKEYUP)
+            {
+                if (key == System.Windows.Forms.Keys.Down ||
+                    key == System.Windows.Forms.Keys.Up)
+                {
+                    _owner.LiteAmpArrowStop();
+                }
+
+                return true;
+            }
+
+            if (key == System.Windows.Forms.Keys.Down)
+            {
+                _owner.LiteAmpArrowStart(1);
+                return true;
+            }
+
+            if (key == System.Windows.Forms.Keys.Up)
+            {
+                _owner.LiteAmpArrowStart(-1);
+                return true;
+            }
+
+            _owner.LiteAmpArrowStop();
+
+            if (key == System.Windows.Forms.Keys.PageDown)
+            {
+                _owner.LiteAmpArrowMove(System.Math.Max(4, _owner.GetPlaylistNativeVisibleCount() - 2));
+                return true;
+            }
+
+            if (key == System.Windows.Forms.Keys.PageUp)
+            {
+                _owner.LiteAmpArrowMove(-System.Math.Max(4, _owner.GetPlaylistNativeVisibleCount() - 2));
+                return true;
+            }
+
+            if (key == System.Windows.Forms.Keys.Home)
+            {
+                _owner.LiteAmpArrowSetSelection(0);
+                return true;
+            }
+
+            if (key == System.Windows.Forms.Keys.End)
+            {
+                _owner.LiteAmpArrowSetSelection(_owner._playlistBox.Items.Count - 1);
+                return true;
+            }
+
+            return false;
+        }
+    }
+
+
+    private void SelectEqPreset(string preset)
+    {
+        _selectedEqPreset = preset;
+        ApplyEqPreset();
+        RefreshEqButtonsVisualState();
+    }
+
+    private void ApplyEqPreset(bool updateStatus = true)
+    {
+        string preset = string.IsNullOrWhiteSpace(_selectedEqPreset) ? "Normal" : _selectedEqPreset;
+        float[] gains = GetEqPresetGains(preset);
+
+        _audio.SetEqualizer(gains);
+
+        if (updateStatus)
+            ShowStatus($"EQ: {GetEqPresetDisplayName(preset)}");
+    }
+
+    private static float[] GetEqPresetGains(string preset)
+    {
+        return preset switch
+        {
+            "Bass Boost" => [5.0f, 3.0f, 0.0f, -1.0f, 0.0f],
+            "Vocal" => [-2.0f, -1.0f, 3.5f, 2.5f, 0.0f],
+            "Rock" => [3.0f, 1.5f, -1.0f, 2.5f, 3.0f],
+            "Pop" => [2.0f, 1.0f, 1.0f, 2.0f, 1.5f],
+            _ => [0.0f, 0.0f, 0.0f, 0.0f, 0.0f]
+        };
+    }
+
+    private static string GetEqPresetDisplayName(string preset)
+    {
+        return preset switch
+        {
+            "Bass Boost" => "Bass",
+            "Normal" => "Normal",
+            _ => preset
+        };
+    }
+
+    private void RefreshEqButtonsVisualState()
+    {
+        if (_eqNormalButton is null)
+            return;
+
+        ApplyModeStyle(_eqNormalButton, _selectedEqPreset == "Normal");
+        ApplyModeStyle(_eqBassButton, _selectedEqPreset == "Bass Boost");
+        ApplyModeStyle(_eqVocalButton, _selectedEqPreset == "Vocal");
+        ApplyModeStyle(_eqRockButton, _selectedEqPreset == "Rock");
+        ApplyModeStyle(_eqPopButton, _selectedEqPreset == "Pop");
+    }
+
+    private void LiteAmpArrowStart(int delta)
+    {
+        if (_playlistBox.Items.Count == 0)
+            return;
+
+        bool newDirection = !_liteAmpArrowActive || _liteAmpArrowDelta != delta;
+
+        _liteAmpArrowDelta = delta;
+        _liteAmpArrowActive = true;
+
+        if (newDirection)
+            LiteAmpArrowMove(delta);
+
+        if (_liteAmpArrowTimer is not null)
+        {
+            if (!_liteAmpArrowTimer.Enabled)
+            {
+                _liteAmpArrowTimer.Interval = 180;
+                _liteAmpArrowTimer.Start();
+            }
         }
     }
 }

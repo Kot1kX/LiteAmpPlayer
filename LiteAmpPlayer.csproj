@@ -1,16 +1,28 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
+    <ApplicationIcon>LiteAmp.ico</ApplicationIcon>
+<OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <ApplicationIcon>LiteAmp.ico</ApplicationIcon>
-  </PropertyGroup>
+</PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
 
+
+  <ItemGroup>
+</ItemGroup>
+
+  <ItemGroup>
+</ItemGroup>
+
+  <ItemGroup>
+    <None Update="LiteAmp.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>

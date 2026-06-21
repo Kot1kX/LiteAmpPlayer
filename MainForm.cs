@@ -1272,12 +1272,17 @@ _topMostCheck.CheckedChanged += (_, _) =>
 
     private sealed class LiteAmpVolumeSlider : System.Windows.Forms.Control
     {
+        private const int ThumbWidth = 10;
+        private const int ThumbHeight = 20;
+        private const int ThumbHalfWidth = ThumbWidth / 2;
+        private const int WheelStep = 5;
+
         private int _minimum;
         private int _maximum = 100;
         private int _value = 80;
         private bool _dragging;
 
-        public new event System.EventHandler? ValueChanged;
+        public event System.EventHandler? ValueChanged;
 
         [System.ComponentModel.Browsable(false)]
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
@@ -1333,13 +1338,22 @@ _topMostCheck.CheckedChanged += (_, _) =>
                 System.Windows.Forms.ControlStyles.UserPaint |
                 System.Windows.Forms.ControlStyles.AllPaintingInWmPaint |
                 System.Windows.Forms.ControlStyles.OptimizedDoubleBuffer |
-                System.Windows.Forms.ControlStyles.ResizeRedraw,
+                System.Windows.Forms.ControlStyles.ResizeRedraw |
+                System.Windows.Forms.ControlStyles.Selectable,
                 true
             );
 
             TabStop = false;
             Cursor = System.Windows.Forms.Cursors.Hand;
             BackColor = System.Drawing.Color.FromArgb(245, 247, 250);
+        }
+
+        protected override void OnMouseEnter(System.EventArgs e)
+        {
+            base.OnMouseEnter(e);
+
+            if (CanFocus)
+                Focus();
         }
 
         protected override void OnPaint(System.Windows.Forms.PaintEventArgs e)
@@ -1349,8 +1363,8 @@ _topMostCheck.CheckedChanged += (_, _) =>
             e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
             int centerY = Height / 2;
-            int trackLeft = 0;
-            int trackRight = System.Math.Max(trackLeft + 1, Width - 1);
+            int trackLeft = ThumbHalfWidth;
+            int trackRight = System.Math.Max(trackLeft + 1, Width - ThumbHalfWidth - 1);
 
             using var trackPen = new System.Drawing.Pen(System.Drawing.Color.FromArgb(200, 205, 213), 2f)
             {
@@ -1365,10 +1379,15 @@ _topMostCheck.CheckedChanged += (_, _) =>
                 : (_value - _minimum) / (double)(_maximum - _minimum);
 
             int thumbX = trackLeft + (int)System.Math.Round((trackRight - trackLeft) * ratio);
+            var thumbRect = new System.Drawing.Rectangle(
+                thumbX - ThumbHalfWidth,
+                centerY - (ThumbHeight / 2),
+                ThumbWidth,
+                ThumbHeight
+            );
+
             using var thumbBrush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(0, 120, 215));
             using var thumbPen = new System.Drawing.Pen(System.Drawing.Color.FromArgb(0, 105, 190), 1f);
-
-            var thumbRect = new System.Drawing.Rectangle(thumbX - 5, centerY - 10, 10, 20);
             using var thumbPath = CreateRoundedRectPath(thumbRect, 4);
 
             e.Graphics.FillPath(thumbBrush, thumbPath);
@@ -1403,6 +1422,35 @@ _topMostCheck.CheckedChanged += (_, _) =>
             Capture = false;
         }
 
+        protected override void OnMouseWheel(System.Windows.Forms.MouseEventArgs e)
+        {
+            if (!ClientRectangle.Contains(PointToClient(System.Windows.Forms.Cursor.Position)))
+            {
+                base.OnMouseWheel(e);
+                return;
+            }
+
+            int notches = e.Delta / 120;
+
+            if (notches == 0)
+                notches = e.Delta > 0 ? 1 : -1;
+
+            Value += notches * WheelStep;
+        }
+
+        private void SetValueFromX(int x)
+        {
+            if (_maximum <= _minimum)
+                return;
+
+            int trackLeft = ThumbHalfWidth;
+            int trackRight = System.Math.Max(trackLeft + 1, Width - ThumbHalfWidth - 1);
+            int clampedX = System.Math.Clamp(x, trackLeft, trackRight);
+
+            double ratio = (clampedX - trackLeft) / (double)(trackRight - trackLeft);
+            Value = _minimum + (int)System.Math.Round((_maximum - _minimum) * ratio);
+        }
+
         private static System.Drawing.Drawing2D.GraphicsPath CreateRoundedRectPath(System.Drawing.Rectangle rect, int radius)
         {
             int diameter = radius * 2;
@@ -1415,18 +1463,6 @@ _topMostCheck.CheckedChanged += (_, _) =>
             path.CloseFigure();
 
             return path;
-        }
-        private void SetValueFromX(int x)
-        {
-            if (_maximum <= _minimum)
-                return;
-
-            int trackLeft = 0;
-            int trackRight = System.Math.Max(trackLeft + 1, Width - 1);
-            int clampedX = System.Math.Clamp(x, trackLeft, trackRight);
-
-            double ratio = (clampedX - trackLeft) / (double)(trackRight - trackLeft);
-            Value = _minimum + (int)System.Math.Round((_maximum - _minimum) * ratio);
         }
     }
     private sealed class DirectSeekTrackBar : TrackBar

@@ -230,14 +230,7 @@ BuildUi();
         _previousButton = CreateButton("Anterior", 16, 178, 84, 34);
         _playButton = CreateButton("Reproducir", 106, 178, 100, 34);
         _stopButton = CreateButton("Detener", 212, 178, 84, 34);
-        _nextButton = CreateButton("Siguiente", 302, 178, 94, 34);
-
-        const int modeRowY = 178;
-        const int modeRowHeight = 34;
-        const int modeRowGap = 4;
-        const int modeRowRight = 750;
-
-        _repeatOneButton = CreateButton("Repetir canci\u00F3n", 416, 178, 126, 34);
+        _nextButton = CreateButton("Siguiente", 302, 178, 94, 34);_repeatOneButton = CreateButton("Repetir canci\u00F3n", 416, 178, 126, 34);
         _repeatListButton = CreateButton("Repetir lista", 542, 178, 112, 34);
         _shuffleButton = CreateButton("Aleatorio", 654, 178, 96, 34);
 

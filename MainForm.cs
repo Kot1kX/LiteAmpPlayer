@@ -51,8 +51,7 @@ internal sealed class MainForm : Form
     private Label _volumeValueLabel = null!;
 
     private DirectSeekTrackBar _progressBar = null!;
-    private TrackBar _volumeBar = null!;
-
+    private LiteAmpVolumeSlider _volumeBar = null!;
     private Button _openButton = null!;
     private Button _folderButton = null!;
     private Button _playButton = null!;
@@ -225,39 +224,36 @@ BuildUi();
             Maximum = 1,
             Value = 0,
             TickStyle = TickStyle.None
-        };
-
-        _previousButton = CreateButton("Anterior", 16, 178, 84, 34);
+        };        _previousButton = CreateButton("Anterior", 16, 178, 84, 34);
         _playButton = CreateButton("Reproducir", 106, 178, 100, 34);
         _stopButton = CreateButton("Detener", 212, 178, 84, 34);
-        _nextButton = CreateButton("Siguiente", 302, 178, 94, 34);_repeatOneButton = CreateButton("Repetir canci\u00F3n", 416, 178, 126, 34);
-        _repeatListButton = CreateButton("Repetir lista", 542, 178, 112, 34);
-        _shuffleButton = CreateButton("Aleatorio", 654, 178, 96, 34);
+        _nextButton = CreateButton("Siguiente", 302, 178, 94, 34);
 
-        var volumeLabel = new Label
+        _repeatOneButton = CreateButton("Repetir canci\u00F3n", 416, 178, 126, 34);
+        _repeatListButton = CreateButton("Repetir lista", 548, 178, 112, 34);
+        _shuffleButton = CreateButton("Aleatorio", 666, 178, 84, 34);        var volumeLabel = new Label
         {
             Text = "Volumen",
-            Location = new Point(16, 225),
-            Size = new Size(70, 24),
+            Location = new Point(16, 221),
+            Size = new Size(58, 24),
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = _textDark
         };
 
-        _volumeBar = new TrackBar
+        _volumeBar = new LiteAmpVolumeSlider
         {
-            Location = new Point(90, 218),
-            Size = new Size(270, 36),
+            Location = new Point(76, 224),
+            Size = new Size(278, 24),
             Minimum = 0,
             Maximum = 100,
-            Value = 80,
-            TickStyle = TickStyle.None
+            Value = 80
         };
 
         _volumeValueLabel = new Label
         {
             Text = "80%",
-            Location = new Point(366, 225),
-            Size = new Size(55, 24),
+            Location = new Point(366, 224),
+            Size = new Size(45, 24),
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = _textMuted
         };
@@ -283,13 +279,9 @@ BuildUi();
         _boost175Button.TabStop = false;
         _boost200Button.TabStop = false;
 
-        RefreshBoostButtonsVisualState();
-
-
-        _openButton = CreateButton("A\u00F1adir archivo", 16, 266, 130, 34);
+        RefreshBoostButtonsVisualState();        _openButton = CreateButton("A\u00F1adir archivo", 16, 266, 130, 34);
         _folderButton = CreateButton("A\u00F1adir carpeta", 154, 266, 140, 34);
         _clearButton = CreateButton("Limpiar lista", 302, 266, 94, 34);
-
         var eqLabel = new Label
         {
             Text = "EQ",
@@ -1277,6 +1269,166 @@ _topMostCheck.CheckedChanged += (_, _) =>
     
     
     
+
+    private sealed class LiteAmpVolumeSlider : System.Windows.Forms.Control
+    {
+        private int _minimum;
+        private int _maximum = 100;
+        private int _value = 80;
+        private bool _dragging;
+
+        public new event System.EventHandler? ValueChanged;
+
+        [System.ComponentModel.Browsable(false)]
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public int Minimum
+        {
+            get => _minimum;
+            set
+            {
+                _minimum = value;
+
+                if (_maximum < _minimum)
+                    _maximum = _minimum;
+
+                Value = _value;
+                Invalidate();
+            }
+        }
+
+        [System.ComponentModel.Browsable(false)]
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public int Maximum
+        {
+            get => _maximum;
+            set
+            {
+                _maximum = System.Math.Max(value, _minimum);
+                Value = _value;
+                Invalidate();
+            }
+        }
+
+        [System.ComponentModel.Browsable(false)]
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public int Value
+        {
+            get => _value;
+            set
+            {
+                int newValue = System.Math.Clamp(value, _minimum, _maximum);
+
+                if (_value == newValue)
+                    return;
+
+                _value = newValue;
+                Invalidate();
+                ValueChanged?.Invoke(this, System.EventArgs.Empty);
+            }
+        }
+
+        public LiteAmpVolumeSlider()
+        {
+            SetStyle(
+                System.Windows.Forms.ControlStyles.UserPaint |
+                System.Windows.Forms.ControlStyles.AllPaintingInWmPaint |
+                System.Windows.Forms.ControlStyles.OptimizedDoubleBuffer |
+                System.Windows.Forms.ControlStyles.ResizeRedraw,
+                true
+            );
+
+            TabStop = false;
+            Cursor = System.Windows.Forms.Cursors.Hand;
+            BackColor = System.Drawing.Color.FromArgb(245, 247, 250);
+        }
+
+        protected override void OnPaint(System.Windows.Forms.PaintEventArgs e)
+        {
+            base.OnPaint(e);
+
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+            int centerY = Height / 2;
+            int trackLeft = 0;
+            int trackRight = System.Math.Max(trackLeft + 1, Width - 1);
+
+            using var trackPen = new System.Drawing.Pen(System.Drawing.Color.FromArgb(200, 205, 213), 2f)
+            {
+                StartCap = System.Drawing.Drawing2D.LineCap.Round,
+                EndCap = System.Drawing.Drawing2D.LineCap.Round
+            };
+
+            e.Graphics.DrawLine(trackPen, trackLeft, centerY, trackRight, centerY);
+
+            double ratio = _maximum <= _minimum
+                ? 0d
+                : (_value - _minimum) / (double)(_maximum - _minimum);
+
+            int thumbX = trackLeft + (int)System.Math.Round((trackRight - trackLeft) * ratio);
+            using var thumbBrush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(0, 120, 215));
+            using var thumbPen = new System.Drawing.Pen(System.Drawing.Color.FromArgb(0, 105, 190), 1f);
+
+            var thumbRect = new System.Drawing.Rectangle(thumbX - 5, centerY - 10, 10, 20);
+            using var thumbPath = CreateRoundedRectPath(thumbRect, 4);
+
+            e.Graphics.FillPath(thumbBrush, thumbPath);
+            e.Graphics.DrawPath(thumbPen, thumbPath);
+        }
+
+        protected override void OnMouseDown(System.Windows.Forms.MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+
+            if (e.Button != System.Windows.Forms.MouseButtons.Left)
+                return;
+
+            _dragging = true;
+            Capture = true;
+            SetValueFromX(e.X);
+        }
+
+        protected override void OnMouseMove(System.Windows.Forms.MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+
+            if (_dragging)
+                SetValueFromX(e.X);
+        }
+
+        protected override void OnMouseUp(System.Windows.Forms.MouseEventArgs e)
+        {
+            base.OnMouseUp(e);
+
+            _dragging = false;
+            Capture = false;
+        }
+
+        private static System.Drawing.Drawing2D.GraphicsPath CreateRoundedRectPath(System.Drawing.Rectangle rect, int radius)
+        {
+            int diameter = radius * 2;
+            var path = new System.Drawing.Drawing2D.GraphicsPath();
+
+            path.AddArc(rect.X, rect.Y, diameter, diameter, 180, 90);
+            path.AddArc(rect.Right - diameter, rect.Y, diameter, diameter, 270, 90);
+            path.AddArc(rect.Right - diameter, rect.Bottom - diameter, diameter, diameter, 0, 90);
+            path.AddArc(rect.X, rect.Bottom - diameter, diameter, diameter, 90, 90);
+            path.CloseFigure();
+
+            return path;
+        }
+        private void SetValueFromX(int x)
+        {
+            if (_maximum <= _minimum)
+                return;
+
+            int trackLeft = 0;
+            int trackRight = System.Math.Max(trackLeft + 1, Width - 1);
+            int clampedX = System.Math.Clamp(x, trackLeft, trackRight);
+
+            double ratio = (clampedX - trackLeft) / (double)(trackRight - trackLeft);
+            Value = _minimum + (int)System.Math.Round((_maximum - _minimum) * ratio);
+        }
+    }
     private sealed class DirectSeekTrackBar : TrackBar
     {
         private const int WM_LBUTTONDOWN = 0x0201;

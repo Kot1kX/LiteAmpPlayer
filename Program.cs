@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows.Forms;
 
 namespace LiteAmpPlayer;
@@ -9,6 +9,9 @@ internal static class Program
     private static void Main()
     {
         ApplicationConfiguration.Initialize();
-        Application.Run(new MainForm());
+        var mainForm = new MainForm();
+Application.Run(mainForm);
     }
 }
+
+

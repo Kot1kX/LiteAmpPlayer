@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -27,7 +27,7 @@ internal sealed class MainForm : Form
     private readonly System.Windows.Forms.Timer _creditFadeTimer = new();
 
     private readonly Color _accent = Color.FromArgb(0, 120, 215);
-    private readonly Color _gold = Color.FromArgb(170, 125, 35);
+    private readonly Color _gold = Color.FromArgb(225, 164, 38);
     private readonly Color _background = Color.FromArgb(245, 247, 250);
     private readonly Color _panel = Color.White;
     private readonly Color _textDark = Color.FromArgb(30, 35, 40);
@@ -110,9 +110,6 @@ BuildUi();
         Shown += (_, _) => BeginInvoke(new Action(AttachStartupFocusFixOnce));
 
         Shown += (_, _) => BeginInvoke(new Action(AttachPlaylistNativeNavigationOnce));
-
-        Shown += (_, _) => BeginInvoke(new Action(LiteAmpInstallPlaylistDeselectFilterOnce));
-
         Shown += (_, _) => BeginInvoke(new Action(AttachLiteAmpArrowMessageFilterOnce));
 }
 
@@ -147,8 +144,8 @@ BuildUi();
             Image = headerIcon,
             Location = new Point(16, 17),
             Size = new Size(30, 30),
-            SizeMode = PictureBoxSizeMode.Zoom,
-            BackColor = _background,
+            SizeMode = PictureBoxSizeMode.CenterImage,
+            BackColor = Color.Transparent,
             Visible = headerIcon is not null
         };
 
@@ -963,16 +960,17 @@ _topMostCheck.CheckedChanged += (_, _) =>
 
     private static bool IsNearWhiteBackground(Color color)
     {
-        if (color.A < 20)
+        if (color.A < 32)
             return true;
 
         int max = Math.Max(color.R, Math.Max(color.G, color.B));
         int min = Math.Min(color.R, Math.Min(color.G, color.B));
+        int spread = max - min;
 
-        bool veryLight = color.R >= 235 && color.G >= 235 && color.B >= 235;
-        bool lowSaturation = (max - min) <= 18;
+        bool whiteOrLightGrey = color.R >= 210 && color.G >= 210 && color.B >= 210 && spread <= 45;
+        bool appSurfaceGrey = color.R >= 232 && color.G >= 234 && color.B >= 236 && spread <= 35;
 
-        return veryLight && lowSaturation;
+        return whiteOrLightGrey || appSurfaceGrey;
     }
 
     private static IEnumerable<string> EnumerateSupportedFiles(string folder)
@@ -1871,6 +1869,7 @@ _topMostCheck.CheckedChanged += (_, _) =>
     }
 
     private System.Windows.Forms.TextBox? _playlistSearchTextBox;
+    private System.Windows.Forms.Label? _playlistSearchPlaceholderLabel;
     private void PlayPlaylistSelectionFromSearch()
     {
         if (_playlistBox.Items.Count == 0 || _playlistBox.SelectedIndex < 0)
@@ -1918,15 +1917,44 @@ _topMostCheck.CheckedChanged += (_, _) =>
             _playlistSearchTextBox.Size = new System.Drawing.Size(width, 24);
             _playlistSearchTextBox.Location = new System.Drawing.Point(left, top);
             _playlistSearchTextBox.BringToFront();
+            PositionPlaylistSearchPlaceholder();
             return;
         }
 
-        // Fallback si se cambia el texto del checkbox en el futuro.
         _playlistSearchTextBox.Size = new System.Drawing.Size(220, 24);
         _playlistSearchTextBox.Location = new System.Drawing.Point(System.Math.Max(330, ClientSize.Width - 382), 54);
         _playlistSearchTextBox.BringToFront();
+        PositionPlaylistSearchPlaceholder();
     }
 
+    private void PositionPlaylistSearchPlaceholder()
+    {
+        if (_playlistSearchTextBox is null || _playlistSearchPlaceholderLabel is null)
+            return;
+
+        int left = _playlistSearchTextBox.Left + 4;
+        int top = _topMostCheck.Top + ((_topMostCheck.Height - _playlistSearchPlaceholderLabel.Height) / 2);
+
+        _playlistSearchPlaceholderLabel.Location = new System.Drawing.Point(left, top);
+
+        if (_playlistSearchTextBox is LiteAmpAlignedSearchTextBox alignedSearchTextBox)
+            alignedSearchTextBox.TextTopOffset = System.Math.Max(1, top - _playlistSearchTextBox.Top);
+
+        _playlistSearchPlaceholderLabel.BringToFront();
+        RefreshPlaylistSearchPlaceholder();
+    }
+    private void RefreshPlaylistSearchPlaceholder()
+    {
+        if (_playlistSearchTextBox is null || _playlistSearchPlaceholderLabel is null)
+            return;
+
+        _playlistSearchPlaceholderLabel.Visible =
+            _playlistSearchTextBox.TextLength == 0 &&
+            !_playlistSearchTextBox.Focused;
+
+        if (_playlistSearchPlaceholderLabel.Visible)
+            _playlistSearchPlaceholderLabel.BringToFront();
+    }
     private static T? FindControlByText<T>(System.Windows.Forms.Control parent, string text)
         where T : System.Windows.Forms.Control
     {
@@ -2190,17 +2218,44 @@ _topMostCheck.CheckedChanged += (_, _) =>
         if (_playlistSearchTextBox is not null)
             return;
 
-        _playlistSearchTextBox = new System.Windows.Forms.TextBox
+        _playlistSearchTextBox = new LiteAmpAlignedSearchTextBox
         {
             Name = "playlistSearchTextBox",
-            PlaceholderText = "Buscar canción...",
+            PlaceholderText = "",
             Size = new System.Drawing.Size(210, 24),
+            BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle,
+            BackColor = _panel,
+            ForeColor = _textDark,
             TabStop = true
         };
 
-        _playlistSearchTextBox.TextChanged += (_, _) => SearchPlaylistLive();
+        _playlistSearchPlaceholderLabel = new System.Windows.Forms.Label
+        {
+            Text = "Buscar canción...",
+            AutoSize = true,
+            BackColor = _panel,
+            ForeColor = _textMuted,
+            Font = _playlistSearchTextBox.Font,
+            Cursor = System.Windows.Forms.Cursors.IBeam,
+            Visible = true
+        };
 
-                        _playlistSearchTextBox.KeyDown += (_, e) =>
+        _playlistSearchPlaceholderLabel.MouseDown += (_, _) =>
+        {
+            _playlistSearchTextBox.Focus();
+            RefreshPlaylistSearchPlaceholder();
+        };
+
+        _playlistSearchTextBox.TextChanged += (_, _) =>
+        {
+            RefreshPlaylistSearchPlaceholder();
+            SearchPlaylistLive();
+        };
+
+        _playlistSearchTextBox.GotFocus += (_, _) => RefreshPlaylistSearchPlaceholder();
+        _playlistSearchTextBox.LostFocus += (_, _) => RefreshPlaylistSearchPlaceholder();
+
+        _playlistSearchTextBox.KeyDown += (_, e) =>
         {
             if (e.KeyCode == System.Windows.Forms.Keys.Enter)
             {
@@ -2217,11 +2272,14 @@ _topMostCheck.CheckedChanged += (_, _) =>
                 _playlistSearchTextBox.Clear();
             }
         };
-Controls.Add(_playlistSearchTextBox);
+
+        Controls.Add(_playlistSearchTextBox);
+        Controls.Add(_playlistSearchPlaceholderLabel);
 
         PositionPlaylistSearchControls();
 
         _playlistSearchTextBox.BringToFront();
+        PositionPlaylistSearchPlaceholder();
     }
 
     private void MovePlaylistSelectionFromSearch(int delta)
@@ -2453,6 +2511,238 @@ Controls.Add(_playlistSearchTextBox);
         }
     }
 
+
+    private sealed class LiteAmpStableSearchTextBox : System.Windows.Forms.TextBox
+    {
+        private const int WM_MOUSEMOVE = 0x0200;
+        private const int WM_NCMOUSEMOVE = 0x00A0;
+        private const int WM_MOUSELEAVE = 0x02A3;
+        private const int WM_NCMOUSELEAVE = 0x02A2;
+
+        public LiteAmpStableSearchTextBox()
+        {
+            SetStyle(
+                System.Windows.Forms.ControlStyles.OptimizedDoubleBuffer |
+                System.Windows.Forms.ControlStyles.AllPaintingInWmPaint,
+                true
+            );
+
+            Cursor = System.Windows.Forms.Cursors.IBeam;
+        }
+
+        protected override void WndProc(ref System.Windows.Forms.Message m)
+        {
+            if (!Focused &&
+                (m.Msg == WM_MOUSEMOVE ||
+                 m.Msg == WM_NCMOUSEMOVE ||
+                 m.Msg == WM_MOUSELEAVE ||
+                 m.Msg == WM_NCMOUSELEAVE))
+            {
+                return;
+            }
+
+            base.WndProc(ref m);
+        }
+    }
+
+    private sealed class LiteAmpSearchTextBox : System.Windows.Forms.TextBox
+    {
+        private const int EM_SETRECT = 0x00B3;
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct NativeRect
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SendMessageW")]
+        private static extern System.IntPtr SendRectMessage(System.IntPtr hWnd, int msg, System.IntPtr wParam, ref NativeRect rect);
+
+        public LiteAmpSearchTextBox()
+        {
+            BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            Multiline = true;
+            AcceptsReturn = false;
+            WordWrap = false;
+            ScrollBars = System.Windows.Forms.ScrollBars.None;
+            Cursor = System.Windows.Forms.Cursors.IBeam;
+        }
+
+        protected override void OnKeyPress(System.Windows.Forms.KeyPressEventArgs e)
+        {
+            if (e.KeyChar == '\r' || e.KeyChar == '\n')
+            {
+                e.Handled = true;
+                return;
+            }
+
+            base.OnKeyPress(e);
+        }
+
+        protected override void OnHandleCreated(System.EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            ApplyTextRect();
+        }
+
+        protected override void OnResize(System.EventArgs e)
+        {
+            base.OnResize(e);
+            ApplyTextRect();
+        }
+
+        protected override void OnFontChanged(System.EventArgs e)
+        {
+            base.OnFontChanged(e);
+            ApplyTextRect();
+        }
+
+        private void ApplyTextRect()
+        {
+            if (!IsHandleCreated || ClientSize.Width <= 0 || ClientSize.Height <= 0)
+                return;
+
+            int textHeight = System.Windows.Forms.TextRenderer.MeasureText("Buscar canción...", Font).Height;
+            int top = System.Math.Max(1, ((ClientSize.Height - textHeight) / 2) + 8);
+
+            var rect = new NativeRect
+            {
+                Left = 4,
+                Top = top,
+                Right = System.Math.Max(5, ClientSize.Width - 4),
+                Bottom = ClientSize.Height - 1
+            };
+
+            SendRectMessage(Handle, EM_SETRECT, System.IntPtr.Zero, ref rect);
+            Invalidate();
+        }
+    }
+
+    private sealed class LiteAmpAlignedSearchTextBox : System.Windows.Forms.TextBox
+    {
+        private const int EM_SETRECT = 0x00B3;
+        private const int WM_SETFOCUS = 0x0007;
+        private const int WM_SETTEXT = 0x000C;
+        private const int WM_SIZE = 0x0005;
+
+        
+        private int _textTopOffset = 6;
+[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct NativeRect
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SendMessageW")]
+        private static extern System.IntPtr SendRectMessage(
+            System.IntPtr hWnd,
+            int msg,
+            System.IntPtr wParam,
+            ref NativeRect rect
+        );
+
+        [System.ComponentModel.Browsable(false)]
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public int TextTopOffset
+        {
+            get => _textTopOffset;
+            set
+            {
+                int safeValue = System.Math.Clamp(value, 1, 18);
+
+                if (_textTopOffset == safeValue)
+                    return;
+
+                _textTopOffset = safeValue;
+                ApplyTextRect();
+            }
+        }
+
+public LiteAmpAlignedSearchTextBox()
+        {
+            BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+            Multiline = true;
+            AcceptsReturn = false;
+            AcceptsTab = false;
+            WordWrap = false;
+            ScrollBars = System.Windows.Forms.ScrollBars.None;
+            Cursor = System.Windows.Forms.Cursors.IBeam;
+        }
+
+        protected override void OnHandleCreated(System.EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            BeginInvoke(new System.Action(ApplyTextRect));
+        }
+
+        protected override void OnResize(System.EventArgs e)
+        {
+            base.OnResize(e);
+            ApplyTextRect();
+        }
+
+        protected override void OnFontChanged(System.EventArgs e)
+        {
+            base.OnFontChanged(e);
+            ApplyTextRect();
+        }
+
+        protected override void OnTextChanged(System.EventArgs e)
+        {
+            base.OnTextChanged(e);
+            ApplyTextRect();
+        }
+
+        protected override void OnGotFocus(System.EventArgs e)
+        {
+            base.OnGotFocus(e);
+            ApplyTextRect();
+        }
+
+        protected override void OnKeyPress(System.Windows.Forms.KeyPressEventArgs e)
+        {
+            if (e.KeyChar == '\r' || e.KeyChar == '\n')
+            {
+                e.Handled = true;
+                return;
+            }
+
+            base.OnKeyPress(e);
+        }
+
+        protected override void WndProc(ref System.Windows.Forms.Message m)
+        {
+            base.WndProc(ref m);
+
+            if (m.Msg == WM_SETFOCUS || m.Msg == WM_SETTEXT || m.Msg == WM_SIZE)
+                ApplyTextRect();
+        }
+
+        private void ApplyTextRect()
+        {
+            if (!IsHandleCreated || ClientSize.Width <= 0 || ClientSize.Height <= 0)
+                return;
+
+            int top = System.Math.Clamp(_textTopOffset, 1, System.Math.Max(1, ClientSize.Height - 4));
+
+            var rect = new NativeRect
+            {
+                Left = 4,
+                Top = top,
+                Right = System.Math.Max(5, ClientSize.Width - 4),
+                Bottom = ClientSize.Height
+            };
+
+            SendRectMessage(Handle, EM_SETRECT, System.IntPtr.Zero, ref rect);
+            Invalidate();
+        }
+    }
     private sealed class LiteAmpFocusSink : System.Windows.Forms.Control
     {
         public LiteAmpFocusSink()
@@ -3599,3 +3889,12 @@ Controls.Add(_playlistSearchTextBox);
         }
     }
 }
+
+
+
+
+
+
+
+
+

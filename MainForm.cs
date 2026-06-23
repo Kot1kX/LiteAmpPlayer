@@ -76,6 +76,7 @@ internal sealed class MainForm : Form
     private Button _eqPopButton = null!;
     private string _selectedEqPreset = "Normal";
     private ListBox _playlistBox = null!;
+    private System.Windows.Forms.Panel _playlistFramePanel = null!;
     private CheckBox _topMostCheck = null!;
 
     public MainForm()
@@ -296,12 +297,25 @@ BuildUi();
 
         RefreshEqButtonsVisualState();
 
-        _playlistBox = new ListBox
+        _playlistFramePanel = new System.Windows.Forms.Panel
         {
             Location = new Point(16, 312),
             Size = new Size(734, 174),
-            IntegralHeight = true,
-            BorderStyle = BorderStyle.FixedSingle,
+            BackColor = _panel
+        };
+
+        _playlistFramePanel.Paint += (_, e) =>
+        {
+            using var borderPen = new Pen(Color.Black, 1f);
+            e.Graphics.DrawRectangle(borderPen, 0, 0, _playlistFramePanel.Width - 1, _playlistFramePanel.Height - 1);
+        };
+
+        _playlistBox = new LiteAmpStableListBox
+        {
+            Location = new Point(1, 1),
+            Size = new Size(732, 172),
+            IntegralHeight = false,
+            BorderStyle = BorderStyle.None,
             BackColor = _panel,
             ForeColor = _textDark,
             Font = new Font("Segoe UI", 9.2F)
@@ -311,8 +325,8 @@ BuildUi();
         {
             Text = "Listo",
             AutoEllipsis = true,
-            Location = new Point(16, 492),
-            Size = new Size(728, 22),
+            Location = new Point(15, 492),
+            Size = new Size(734, 22),
             ForeColor = _textMuted,
             TextAlign = ContentAlignment.MiddleLeft
         };
@@ -352,9 +366,12 @@ BuildUi();
             _eqVocalButton,
             _eqRockButton,
             _eqPopButton,
-            _playlistBox,
+            _playlistFramePanel,
             _statusLabel
         ]);
+
+        _playlistFramePanel.Controls.Add(_playlistBox);
+        _playlistBox.BringToFront();
     }
 
     private void WireEvents()
@@ -1868,8 +1885,7 @@ _topMostCheck.CheckedChanged += (_, _) =>
         }
     }
 
-    private System.Windows.Forms.TextBox? _playlistSearchTextBox;
-    private System.Windows.Forms.Label? _playlistSearchPlaceholderLabel;
+    private LiteAmpSearchBox? _playlistSearchTextBox;
     private void PlayPlaylistSelectionFromSearch()
     {
         if (_playlistBox.Items.Count == 0 || _playlistBox.SelectedIndex < 0)
@@ -1916,44 +1932,39 @@ _topMostCheck.CheckedChanged += (_, _) =>
 
             _playlistSearchTextBox.Size = new System.Drawing.Size(width, 24);
             _playlistSearchTextBox.Location = new System.Drawing.Point(left, top);
+
+            int searchTextHeight = System.Windows.Forms.TextRenderer.MeasureText(
+                "Buscar canción...",
+                _playlistSearchTextBox.Font
+            ).Height;
+
+            int checkboxTextHeight = System.Windows.Forms.TextRenderer.MeasureText(
+                alwaysOnTopCheckBox.Text,
+                alwaysOnTopCheckBox.Font
+            ).Height;
+
+            int checkboxTextTop =
+                alwaysOnTopCheckBox.Top +
+                ((alwaysOnTopCheckBox.Height - checkboxTextHeight) / 2) +
+                1;
+
+            _playlistSearchTextBox.SetTextLineTop(System.Math.Max(1, checkboxTextTop - _playlistSearchTextBox.Top));
+
             _playlistSearchTextBox.BringToFront();
-            PositionPlaylistSearchPlaceholder();
             return;
         }
 
         _playlistSearchTextBox.Size = new System.Drawing.Size(220, 24);
         _playlistSearchTextBox.Location = new System.Drawing.Point(System.Math.Max(330, ClientSize.Width - 382), 54);
+        _playlistSearchTextBox.SetTextLineTop(5);
         _playlistSearchTextBox.BringToFront();
-        PositionPlaylistSearchPlaceholder();
     }
 
     private void PositionPlaylistSearchPlaceholder()
     {
-        if (_playlistSearchTextBox is null || _playlistSearchPlaceholderLabel is null)
-            return;
-
-        int left = _playlistSearchTextBox.Left + 4;
-        int top = _topMostCheck.Top + ((_topMostCheck.Height - _playlistSearchPlaceholderLabel.Height) / 2);
-
-        _playlistSearchPlaceholderLabel.Location = new System.Drawing.Point(left, top);
-
-        if (_playlistSearchTextBox is LiteAmpAlignedSearchTextBox alignedSearchTextBox)
-            alignedSearchTextBox.TextTopOffset = System.Math.Max(1, top - _playlistSearchTextBox.Top);
-
-        _playlistSearchPlaceholderLabel.BringToFront();
-        RefreshPlaylistSearchPlaceholder();
     }
     private void RefreshPlaylistSearchPlaceholder()
     {
-        if (_playlistSearchTextBox is null || _playlistSearchPlaceholderLabel is null)
-            return;
-
-        _playlistSearchPlaceholderLabel.Visible =
-            _playlistSearchTextBox.TextLength == 0 &&
-            !_playlistSearchTextBox.Focused;
-
-        if (_playlistSearchPlaceholderLabel.Visible)
-            _playlistSearchPlaceholderLabel.BringToFront();
     }
     private static T? FindControlByText<T>(System.Windows.Forms.Control parent, string text)
         where T : System.Windows.Forms.Control
@@ -2022,7 +2033,8 @@ _topMostCheck.CheckedChanged += (_, _) =>
     {
         while (control is not null)
         {
-            if (control is System.Windows.Forms.TextBoxBase ||
+            if (control is LiteAmpSearchBox ||
+                control is System.Windows.Forms.TextBoxBase ||
                 control is System.Windows.Forms.ComboBox)
             {
                 return true;
@@ -2218,42 +2230,17 @@ _topMostCheck.CheckedChanged += (_, _) =>
         if (_playlistSearchTextBox is not null)
             return;
 
-        _playlistSearchTextBox = new LiteAmpAlignedSearchTextBox
+        _playlistSearchTextBox = new LiteAmpSearchBox
         {
             Name = "playlistSearchTextBox",
-            PlaceholderText = "",
+            PlaceholderText = "Buscar canción...",
             Size = new System.Drawing.Size(210, 24),
-            BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle,
             BackColor = _panel,
             ForeColor = _textDark,
             TabStop = true
         };
 
-        _playlistSearchPlaceholderLabel = new System.Windows.Forms.Label
-        {
-            Text = "Buscar canción...",
-            AutoSize = true,
-            BackColor = _panel,
-            ForeColor = _textMuted,
-            Font = _playlistSearchTextBox.Font,
-            Cursor = System.Windows.Forms.Cursors.IBeam,
-            Visible = true
-        };
-
-        _playlistSearchPlaceholderLabel.MouseDown += (_, _) =>
-        {
-            _playlistSearchTextBox.Focus();
-            RefreshPlaylistSearchPlaceholder();
-        };
-
-        _playlistSearchTextBox.TextChanged += (_, _) =>
-        {
-            RefreshPlaylistSearchPlaceholder();
-            SearchPlaylistLive();
-        };
-
-        _playlistSearchTextBox.GotFocus += (_, _) => RefreshPlaylistSearchPlaceholder();
-        _playlistSearchTextBox.LostFocus += (_, _) => RefreshPlaylistSearchPlaceholder();
+        _playlistSearchTextBox.TextChanged += (_, _) => SearchPlaylistLive();
 
         _playlistSearchTextBox.KeyDown += (_, e) =>
         {
@@ -2274,12 +2261,10 @@ _topMostCheck.CheckedChanged += (_, _) =>
         };
 
         Controls.Add(_playlistSearchTextBox);
-        Controls.Add(_playlistSearchPlaceholderLabel);
 
         PositionPlaylistSearchControls();
 
         _playlistSearchTextBox.BringToFront();
-        PositionPlaylistSearchPlaceholder();
     }
 
     private void MovePlaylistSelectionFromSearch(int delta)
@@ -2387,7 +2372,8 @@ _topMostCheck.CheckedChanged += (_, _) =>
     {
         while (control is not null)
         {
-            if (control is System.Windows.Forms.TextBoxBase ||
+            if (control is LiteAmpSearchBox ||
+                control is System.Windows.Forms.TextBoxBase ||
                 control is System.Windows.Forms.ComboBox ||
                 control is System.Windows.Forms.TrackBar)
             {
@@ -2512,6 +2498,39 @@ _topMostCheck.CheckedChanged += (_, _) =>
     }
 
 
+
+    private sealed class LiteAmpStableListBox : System.Windows.Forms.ListBox
+    {
+        private const int WM_MOUSEMOVE = 0x0200;
+        private const int WM_NCMOUSEMOVE = 0x00A0;
+        private const int WM_MOUSELEAVE = 0x02A3;
+        private const int WM_NCMOUSELEAVE = 0x02A2;
+
+        public LiteAmpStableListBox()
+        {
+            BorderStyle = System.Windows.Forms.BorderStyle.None;
+            IntegralHeight = false;
+
+            SetStyle(
+                System.Windows.Forms.ControlStyles.OptimizedDoubleBuffer |
+                System.Windows.Forms.ControlStyles.AllPaintingInWmPaint,
+                true
+            );
+        }
+
+        protected override void WndProc(ref System.Windows.Forms.Message m)
+        {
+            if (m.Msg == WM_MOUSEMOVE ||
+                m.Msg == WM_NCMOUSEMOVE ||
+                m.Msg == WM_MOUSELEAVE ||
+                m.Msg == WM_NCMOUSELEAVE)
+            {
+                return;
+            }
+
+            base.WndProc(ref m);
+        }
+    }
     private sealed class LiteAmpStableSearchTextBox : System.Windows.Forms.TextBox
     {
         private const int WM_MOUSEMOVE = 0x0200;
@@ -2741,6 +2760,265 @@ public LiteAmpAlignedSearchTextBox()
 
             SendRectMessage(Handle, EM_SETRECT, System.IntPtr.Zero, ref rect);
             Invalidate();
+        }
+    }
+
+    private sealed class LiteAmpSearchBox : System.Windows.Forms.UserControl
+    {
+        private readonly System.Windows.Forms.TextBox _innerTextBox;
+        private int _textLineTop = 5;
+        private string _placeholderText = string.Empty;
+        private bool _showingPlaceholder;
+
+        public LiteAmpSearchBox()
+        {
+            SetStyle(
+                System.Windows.Forms.ControlStyles.UserPaint |
+                System.Windows.Forms.ControlStyles.AllPaintingInWmPaint |
+                System.Windows.Forms.ControlStyles.OptimizedDoubleBuffer |
+                System.Windows.Forms.ControlStyles.ResizeRedraw |
+                System.Windows.Forms.ControlStyles.Selectable,
+                true
+            );
+
+            BackColor = System.Drawing.Color.White;
+            ForeColor = System.Drawing.Color.FromArgb(30, 35, 40);
+            TabStop = true;
+            Cursor = System.Windows.Forms.Cursors.IBeam;
+
+            _innerTextBox = new System.Windows.Forms.TextBox
+            {
+                BorderStyle = System.Windows.Forms.BorderStyle.None,
+                AutoSize = false,
+                Multiline = false,
+                BackColor = BackColor,
+                ForeColor = ForeColor,
+                Font = Font,
+                TabStop = true,
+                PlaceholderText = string.Empty
+            };
+
+            _innerTextBox.TextChanged += (_, _) =>
+            {
+                if (!string.Equals(base.Text, _innerTextBox.Text, System.StringComparison.Ordinal))
+                    base.Text = _innerTextBox.Text;
+
+                UpdatePlaceholderState();
+            };
+
+            _innerTextBox.KeyDown += (_, e) => OnKeyDown(e);
+
+            _innerTextBox.KeyPress += (_, e) =>
+            {
+                if (e.KeyChar == '\r' || e.KeyChar == '\n')
+                    e.Handled = true;
+            };
+
+            _innerTextBox.GotFocus += (_, _) => UpdatePlaceholderState();
+            _innerTextBox.LostFocus += (_, _) => UpdatePlaceholderState();
+
+            Controls.Add(_innerTextBox);
+            UpdateInnerBounds();
+            UpdatePlaceholderState();
+        }
+
+        [System.ComponentModel.Browsable(false)]
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public string PlaceholderText
+        {
+            get => _placeholderText;
+            set
+            {
+                _placeholderText = value ?? string.Empty;
+                _innerTextBox.PlaceholderText = string.Empty;
+                UpdatePlaceholderState();
+            }
+        }
+
+        [System.ComponentModel.Browsable(false)]
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+        public int TextLength => _innerTextBox.TextLength;
+
+        [System.Diagnostics.CodeAnalysis.AllowNull]
+        public override string Text
+        {
+            get => _innerTextBox.Text;
+            set
+            {
+                string safeValue = value ?? string.Empty;
+
+                if (!string.Equals(_innerTextBox.Text, safeValue, System.StringComparison.Ordinal))
+                    _innerTextBox.Text = safeValue;
+
+                if (!string.Equals(base.Text, safeValue, System.StringComparison.Ordinal))
+                    base.Text = safeValue;
+
+                UpdatePlaceholderState();
+            }
+        }
+
+        public override System.Drawing.Color BackColor
+        {
+            get => base.BackColor;
+            set
+            {
+                base.BackColor = value;
+
+                if (_innerTextBox is not null)
+                    _innerTextBox.BackColor = value;
+
+                Invalidate();
+            }
+        }
+
+        public override System.Drawing.Color ForeColor
+        {
+            get => base.ForeColor;
+            set
+            {
+                base.ForeColor = value;
+
+                if (_innerTextBox is not null)
+                    _innerTextBox.ForeColor = value;
+
+                Invalidate();
+            }
+        }
+
+        [System.Diagnostics.CodeAnalysis.AllowNull]
+        public override System.Drawing.Font Font
+        {
+            get => base.Font;
+            set
+            {
+                base.Font = value;
+
+                if (_innerTextBox is not null)
+                {
+                    _innerTextBox.Font = value ?? base.Font;
+                    UpdateInnerBounds();
+                }
+
+                Invalidate();
+            }
+        }
+
+        public void SetTextLineTop(int top)
+        {
+            int safeTop = System.Math.Clamp(top, 1, 18);
+
+            if (_textLineTop == safeTop)
+                return;
+
+            _textLineTop = safeTop;
+            UpdateInnerBounds();
+            Invalidate();
+        }
+
+        public void Clear()
+        {
+            _innerTextBox.Clear();
+        }
+
+        public new bool Focus()
+        {
+            ShowEditor();
+            return _innerTextBox.Focus();
+        }
+
+        protected override void OnEnter(System.EventArgs e)
+        {
+            base.OnEnter(e);
+            ShowEditor();
+            _innerTextBox.Focus();
+        }
+
+        protected override void OnMouseDown(System.Windows.Forms.MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            ShowEditor();
+            _innerTextBox.Focus();
+        }
+
+        protected override void OnResize(System.EventArgs e)
+        {
+            base.OnResize(e);
+            UpdateInnerBounds();
+        }
+
+        protected override void OnPaint(System.Windows.Forms.PaintEventArgs e)
+        {
+            base.OnPaint(e);
+
+            using var borderPen = new System.Drawing.Pen(System.Drawing.Color.FromArgb(120, 120, 120));
+            e.Graphics.DrawRectangle(borderPen, 0, 0, Width - 1, Height - 1);
+
+            if (_showingPlaceholder && !string.IsNullOrWhiteSpace(_placeholderText))
+            {
+                var placeholderRect = new System.Drawing.Rectangle(
+                    5,
+                    System.Math.Max(0, _textLineTop - 1),
+                    System.Math.Max(10, Width - 10),
+                    System.Math.Max(12, Height - _textLineTop)
+                );
+
+                System.Windows.Forms.TextRenderer.DrawText(
+                    e.Graphics,
+                    _placeholderText,
+                    Font,
+                    placeholderRect,
+                    System.Drawing.Color.FromArgb(95, 102, 112),
+                    System.Windows.Forms.TextFormatFlags.Left |
+                    System.Windows.Forms.TextFormatFlags.SingleLine |
+                    System.Windows.Forms.TextFormatFlags.EndEllipsis |
+                    System.Windows.Forms.TextFormatFlags.NoPadding
+                );
+            }
+        }
+
+        private void ShowEditor()
+        {
+            if (!_innerTextBox.Visible)
+                _innerTextBox.Visible = true;
+        }
+
+        private void UpdatePlaceholderState()
+        {
+            if (_innerTextBox is null)
+                return;
+
+            bool showPlaceholder =
+                _innerTextBox.TextLength == 0 &&
+                !_innerTextBox.Focused &&
+                !string.IsNullOrWhiteSpace(_placeholderText);
+
+            if (_showingPlaceholder == showPlaceholder &&
+                _innerTextBox.Visible == !showPlaceholder)
+            {
+                return;
+            }
+
+            _showingPlaceholder = showPlaceholder;
+            _innerTextBox.Visible = !showPlaceholder;
+            Invalidate();
+        }
+
+        private void UpdateInnerBounds()
+        {
+            if (_innerTextBox is null)
+                return;
+
+            int innerHeight = System.Math.Max(16, Height - 8);
+            int innerTop = System.Math.Clamp(_textLineTop, 1, System.Math.Max(1, Height - innerHeight - 1));
+
+            _innerTextBox.SetBounds(
+                5,
+                innerTop,
+                System.Math.Max(10, Width - 10),
+                innerHeight
+            );
+
+            UpdatePlaceholderState();
         }
     }
     private sealed class LiteAmpFocusSink : System.Windows.Forms.Control
@@ -3889,6 +4167,17 @@ public LiteAmpAlignedSearchTextBox()
         }
     }
 }
+
+
+
+
+
+
+
+
+
+
+
 
 
 
